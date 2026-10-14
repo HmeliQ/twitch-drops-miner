@@ -341,11 +341,13 @@ export function Busy({ label }: { label: string }) {
 export function Dialog({
   open,
   title,
+  help,
   onClose,
   children,
 }: {
   open: boolean;
   title: string;
+  help?: string;
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -368,9 +370,12 @@ export function Dialog({
       className="m-auto w-[calc(100%_-_32px)] max-w-md rounded-md border border-divider bg-raised p-6 text-text shadow-xl backdrop:bg-black/65"
     >
       <div className="mb-4 flex items-center justify-between gap-4">
-        <h2 id={id} className="text-lg font-semibold">
-          {title}
-        </h2>
+        <div className="flex min-w-0 items-center gap-1">
+          <h2 id={id} className="text-lg font-semibold">
+            {title}
+          </h2>
+          {help && <HelpButton label={title} text={help} />}
+        </div>
         <IconButton path={mdiClose} label={t('close')} onClick={onClose} />
       </div>
       {children}

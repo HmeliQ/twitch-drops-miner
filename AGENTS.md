@@ -190,13 +190,17 @@ embed it and run without a build tool/runtime companion. Production builds never
   Selection does not restrict commands or tests. Configuration changes cancel pending alerts
   through the configuration epoch. Keep the selector beside the claim-alert switch.
 - The account switcher lives in the existing sidebar/compact header; management is in Settings >
-  Accounts. Preserve per-account routes, filters, scroll, drafts and Up next disclosures. Keep IDs
+  Accounts. Switching keeps the current page and section; restore an account's filters and
+  scroll only on that same page. Preserve account drafts and Up next disclosures. Keep IDs
   in multi-account navigation/deep links. Global Connection/Telegram drafts and in-flight saves
   survive switching; dashboard logout clears private drafts. Suspend unavailable subscriptions,
   fence old publications and reconnect with bounded backoff after recovery.
   Done stays disabled after accepted login confirmation until verification ends, including
   after reopening the dialog. Account rows expose rename/sign-out/remove icon buttons;
-  profile and badges stay expanded. Put explanatory text in the existing info popover,
+  profile and badges stay expanded without a separator above them. Keep Add account at the
+  top right of the account table and its login help beside the dialog title. Dialog help
+  uses viewport placement so the full text is not squeezed by the dialog's anchor area.
+  Put explanatory text in the existing info popover,
   keeping errors and destructive-action confirmations visible.
 - Desktop tray actions distinguish the viewed account from all accounts and capture revisions.
   Keep-awake is installation-wide: any connected, unpaused, actively watching account may hold

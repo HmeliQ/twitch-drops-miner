@@ -307,16 +307,25 @@ export function AccountsProvider({ children }: { children: ReactNode }) {
         });
       const remembered = routes.current.get(id);
       const currentParams = new URLSearchParams(latestLocation.current.search);
+      const rememberedParams = new URLSearchParams(remembered?.search);
+      const samePage =
+        remembered?.pathname === latestLocation.current.pathname &&
+        remembered.hash === latestLocation.current.hash &&
+        ['edit', 'tab', 'campaign', 'drop'].every(
+          (key) => rememberedParams.get(key) === currentParams.get(key),
+        );
       const sectionParams = new URLSearchParams();
       for (const key of ['edit', 'tab']) {
         const value = currentParams.get(key);
         if (value) sectionParams.set(key, value);
       }
-      const destination = remembered ?? {
-        ...latestLocation.current,
-        search: sectionParams.toString(),
-        state: null,
-      };
+      const destination = samePage
+        ? remembered
+        : {
+            ...latestLocation.current,
+            search: sectionParams.toString(),
+            state: null,
+          };
       const params = new URLSearchParams(destination.search);
       params.set('account', id);
       restore.current = true;
@@ -337,7 +346,12 @@ export function AccountsProvider({ children }: { children: ReactNode }) {
     const view = routes.current.get(selection.current);
     restore.current = false;
     document.getElementById('main')?.focus({ preventScroll: true });
-    if (!view) {
+    if (
+      !view ||
+      view.pathname !== latestLocation.current.pathname ||
+      view.search !== latestLocation.current.search ||
+      view.hash !== latestLocation.current.hash
+    ) {
       window.scrollTo(0, 0);
       return;
     }

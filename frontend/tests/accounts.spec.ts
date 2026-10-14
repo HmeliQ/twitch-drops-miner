@@ -86,6 +86,60 @@ for (const width of [1440, 390, 320]) {
   });
 }
 
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 1280, height: 360 },
+  { width: 320, height: 640 },
+]) {
+  test(`account header and login help fit ${viewport.width}x${viewport.height}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await page.goto('/settings#account');
+    const add = page.getByRole('button', { name: 'Add account', exact: true });
+    const header = add.locator('..');
+    await expect(header.getByRole('checkbox', { name: 'Select all', exact: true })).toBeVisible();
+    const addBox = (await add.boundingBox())!;
+    const headerBox = (await header.boundingBox())!;
+    expect(headerBox.x + headerBox.width - addBox.x - addBox.width).toBeCloseTo(16);
+    await expect(page.locator('#settings-account .account-identity').locator('../..')).toHaveCSS(
+      'border-top-width',
+      '0px',
+    );
+    await add.click();
+    const dialog = page.getByRole('dialog', { name: 'Add account', exact: true });
+    const heading = dialog.getByRole('heading', { name: 'Add account', exact: true });
+    const help = dialog.getByRole('button', { name: 'Add account help', exact: true });
+    await expect(help).toBeVisible();
+    const headingBox = (await heading.boundingBox())!;
+    const helpBox = (await help.boundingBox())!;
+    expect(helpBox.x).toBeGreaterThanOrEqual(headingBox.x + headingBox.width);
+    expect(
+      Math.abs(helpBox.y + helpBox.height / 2 - headingBox.y - headingBox.height / 2),
+    ).toBeLessThan(1);
+    await help.click();
+    const note = dialog.getByRole('note');
+    await expect(note).toContainText(
+      'Check which account is signed in on Twitch before entering the code.',
+    );
+    const bounds = await note.evaluate((element) => ({
+      client: element.clientHeight,
+      scroll: element.scrollHeight,
+      top: element.getBoundingClientRect().top,
+      bottom: element.getBoundingClientRect().bottom,
+    }));
+    expect(bounds.scroll).toBeLessThanOrEqual(bounds.client + 1);
+    expect(bounds.top).toBeGreaterThanOrEqual(0);
+    expect(bounds.bottom).toBeLessThanOrEqual(viewport.height);
+    await page.screenshot({ path: `../artifacts/account-login-help-${viewport.width}.png` });
+    await page.keyboard.press('Escape');
+    await expect(note).not.toBeVisible();
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeEnabled();
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  });
+}
+
 test('switching retains account views and sends a pending preference save to its original account', async ({
   page,
   request,
@@ -107,11 +161,34 @@ test('switching retains account views and sends a pending preference save to its
     .getByRole('searchbox', { name: 'Search campaigns and rewards', exact: true })
     .fill('Rust');
   await switchTo(page, 'Account 2');
-  await expect(page).toHaveURL(/edit=priorities/);
+  await expect(page).toHaveURL(new RegExp(`/campaigns\\?account=${second}$`));
   await switchTo(page, 'Twitch 123456');
   await expect(
     page.getByRole('searchbox', { name: 'Search campaigns and rewards', exact: true }),
   ).toHaveValue('Rust');
+});
+
+test('switching accounts keeps the current page and settings or campaign section', async ({
+  page,
+  request,
+}) => {
+  await seed(request);
+  await page.goto('/settings#notifications');
+  await switchTo(page, 'Account 2');
+  await expect(page).toHaveURL(new RegExp(`/settings\\?account=${second}#notifications$`));
+  await page.getByRole('link', { name: 'Mining', exact: true }).click();
+  await switchTo(page, 'Twitch 123456');
+  await expect(page).toHaveURL(/\/\?account=primary$/);
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('link', { name: 'Connection', exact: true }).click();
+  await switchTo(page, 'Account 2');
+  await expect(page).toHaveURL(new RegExp(`/settings\\?account=${second}#connection$`));
+  await page.goto(`/campaigns?account=${second}&tab=history`);
+  await switchTo(page, 'Twitch 123456');
+  const url = new URL(page.url());
+  expect(url.pathname).toBe('/campaigns');
+  expect(url.searchParams.get('tab')).toBe('history');
+  expect(url.searchParams.get('account')).toBe('primary');
 });
 
 test('bulk actions keep successful accounts and retry only failures after a revision conflict', async ({

@@ -11,7 +11,6 @@ import {
   Check,
   Dialog,
   Field,
-  HelpButton,
   IconButton,
   Input,
   Notice,
@@ -69,6 +68,7 @@ export default function AccountLogin({ onClose }: { onClose: () => void }) {
     <Dialog
       open={!!login}
       title={t(login?.target ? 'accounts_reconnect' : 'accounts_add')}
+      help={!login?.user_id ? t('accounts_login_help') : undefined}
       onClose={() => {
         if (!command.busy) onClose();
       }}
@@ -173,7 +173,6 @@ export default function AccountLogin({ onClose }: { onClose: () => void }) {
                 >
                   {t('gui.login.oauth_confirm')}
                 </Button>
-                <HelpButton label={t('accounts_add')} text={t('accounts_login_help')} />
               </div>
               {copyState === 'copied' && (
                 <span className="sr-only" role="status">

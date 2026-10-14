@@ -158,6 +158,11 @@
     }
   }
 }
+dialog .help-popover {
+  position-area: none;
+  inset: 0;
+  margin: auto;
+}
 .campaign-workspace {
   display: grid;
   align-items: stretch;
