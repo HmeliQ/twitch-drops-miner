@@ -2472,15 +2472,15 @@ test('icon actions and authorization row use compact accessible controls', async
     .poll(() => filters.evaluate((node) => getComputedStyle(node).backgroundColor))
     .toBe('rgb(51, 51, 51)');
   await page.goto('/settings');
-  await page.locator('#account summary').click();
-  await expect(page.locator('#account .account-identity')).toBeVisible();
+  await page.locator('#settings-account summary').click();
+  await expect(page.locator('#settings-account .account-identity')).toBeVisible();
   await expect(page.locator('#settings-account')).not.toContainText('Dashboard connected');
 
   await page.getByRole('button', { name: 'Add account', exact: true }).click();
   await expect(page.getByText('Enter this code at:', { exact: true })).toHaveCount(0);
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.getByRole('button', { name: 'Copy code', exact: true }).click();
-  await expect(page.locator('#account .panel')).toHaveCount(0);
+  await expect(page.locator('#settings-account .panel')).toHaveCount(0);
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('TESTCODE');
   const code = await page.locator('dialog code').locator('..').boundingBox();
   const activate = await page.getByRole('link', { name: 'Twitch Activate' }).boundingBox();

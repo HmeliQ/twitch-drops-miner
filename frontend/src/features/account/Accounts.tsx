@@ -16,6 +16,7 @@ import {
   type BulkResult,
 } from '../../app/accounts';
 import { useMiner } from '../../app/MinerProvider';
+import { ApiError } from '../../shared/lib/api';
 import { useT } from '../../shared/lib/i18n';
 import {
   ActionResult,
@@ -53,6 +54,12 @@ export default function Accounts() {
   const [copy, setCopy] = useState(false);
   const [copySource, setCopySource] = useState('');
   const [copyAutoClaim, setCopyAutoClaim] = useState(false);
+  const sources = accounts.filter((account) => !account.unavailable);
+  const sourceIds = sources.map((account) => account.id).join(',');
+  const validSource = sources.some((account) => account.id === copySource);
+  useEffect(() => {
+    if (copy && !validSource) setCopySource(sources[0]?.id ?? '');
+  }, [copy, copySource, sourceIds]);
   const ids = accounts.map((account) => account.id).join(',');
   useEffect(
     () =>
@@ -79,10 +86,10 @@ export default function Accounts() {
   }
   async function copyPreferences(sourceId: string, autoClaim: boolean, ids = checked) {
     const source = accounts.find((account) => account.id === sourceId);
-    if (!source) return;
     setRetryPause(null);
     setRetryCopy({ source: sourceId, autoClaim });
     await command.run(async () => {
+      if (!source || source.unavailable) throw new ApiError(409, 'accounts_unavailable');
       setResult(
         await action<BulkResult>({
           action: 'copy_preferences',
@@ -169,7 +176,11 @@ export default function Accounts() {
                     command.clear();
                     setResult(null);
                     setRetryPause(null);
-                    setCopySource(selected ?? accounts[0]?.id ?? '');
+                    setCopySource(
+                      sources.find((account) => account.id === selected)?.id ??
+                        sources[0]?.id ??
+                        '',
+                    );
                     setCopyAutoClaim(false);
                     setCopy(true);
                   }}
@@ -438,16 +449,19 @@ export default function Accounts() {
           <Field label={t('accounts_copy_from')}>
             <select
               className="field"
-              value={copySource}
+              value={validSource ? copySource : ''}
               onChange={(event) => setCopySource(event.target.value)}
             >
-              {accounts
-                .filter((account) => !account.unavailable)
-                .map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {accountName(account) || t('account')}
-                  </option>
-                ))}
+              {!validSource && (
+                <option value="" disabled>
+                  {t('accounts_unavailable')}
+                </option>
+              )}
+              {sources.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {accountName(account) || t('account')}
+                </option>
+              ))}
             </select>
           </Field>
           <p className="text-[13px] text-muted">
@@ -471,7 +485,9 @@ export default function Accounts() {
             </Button>
             <Button
               primary
-              disabled={disabled || !targets.some((account) => account.id !== copySource)}
+              disabled={
+                disabled || !validSource || !targets.some((account) => account.id !== copySource)
+              }
               onClick={() => void copyPreferences(copySource, copyAutoClaim)}
             >
               {t('accounts_copy')}

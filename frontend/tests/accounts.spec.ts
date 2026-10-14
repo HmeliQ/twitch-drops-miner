@@ -341,3 +341,33 @@ test('offline account management disables writes and reconnects without changing
   await expect(page.locator('.account-trigger')).toContainText('Account 2');
   await expect(page).toHaveURL(new RegExp(`account=${second}`));
 });
+
+test('copy source stays valid when an account becomes unavailable or is removed', async ({
+  page,
+  request,
+}) => {
+  await seed(request);
+  await page.goto(`/settings?account=${second}#account`);
+  await request.post('/__test/event', {
+    headers,
+    data: { account: second, event: 'account_unavailable', data: null },
+  });
+  await expect(page.getByRole('button', { name: 'Try again', exact: true })).toBeVisible();
+  await page.getByRole('checkbox', { name: 'Select Account 3', exact: true }).check();
+  await page.getByRole('button', { name: 'Copy mining preferences', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Copy mining preferences', exact: true });
+  const source = dialog.getByRole('combobox');
+  await expect(source).toHaveValue('primary');
+  const copy = dialog.getByRole('button', { name: 'Copy mining preferences', exact: true });
+  await copy.click();
+  await expect(dialog).not.toBeVisible();
+  expect((await settings(request, third)).games_to_watch).toEqual(
+    (await settings(request, 'primary')).games_to_watch,
+  );
+  await page.getByRole('button', { name: 'Copy mining preferences', exact: true }).click();
+  await expect(source).toHaveValue('primary');
+  await source.selectOption(third);
+  await request.post('/api/accounts', { headers, data: { action: 'remove', id: third } });
+  await expect(source).toHaveValue('primary');
+  await expect(copy).toBeDisabled();
+});
