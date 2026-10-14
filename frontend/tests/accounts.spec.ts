@@ -64,6 +64,17 @@ for (const width of [1440, 390, 320]) {
     ).toBeAttached();
     await expect(page.getByRole('button', { name: 'Add account', exact: true })).toBeDisabled();
     await page.getByRole('checkbox', { name: 'Select all', exact: true }).check();
+    const toolbar = page.getByRole('button', { name: 'Add account', exact: true }).locator('..');
+    const buttons = toolbar.getByRole('button');
+    await expect(buttons).toHaveCount(4);
+    const boxes = await buttons.evaluateAll((elements) =>
+      elements.map((element) => ({
+        text: element.textContent,
+        y: element.getBoundingClientRect().y,
+      })),
+    );
+    expect(boxes.every((box) => box.text === '' && box.y === boxes[0]!.y)).toBe(true);
+    await toolbar.screenshot({ path: `../artifacts/account-toolbar-${width}.png` });
     await page.getByRole('button', { name: 'Pause', exact: true }).click();
     await expect(page.getByRole('status')).toContainText('Updated 20 of 20 accounts.');
     expect((await overview(request)).accounts.every((account) => account.paused)).toBe(true);
@@ -86,6 +97,51 @@ for (const width of [1440, 390, 320]) {
   });
 }
 
+for (const width of [1440, 320]) {
+  test(`one account has direct settings navigation and no table at ${width}px`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/');
+    await page
+      .getByRole('link', { name: 'Manage accounts', exact: true })
+      .filter({ visible: true })
+      .click();
+    await expect(page).toHaveURL(/\/settings#account$/);
+    await expect(page.getByRole('button', { name: 'Switch account', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('checkbox', { name: 'Select all', exact: true })).toHaveCount(0);
+    await expect(page.locator('#settings-account [aria-label="Accounts"]')).toHaveCount(0);
+    for (const name of [
+      'Add account',
+      'Rename Twitch 123456',
+      'Sign out Twitch 123456',
+      'Remove Twitch 123456',
+    ])
+      await expect(page.getByRole('button', { name, exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Rename Twitch 123456', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.screenshot({ path: `../artifacts/single-account-${width}.png`, fullPage: true });
+    await seed(request, 1);
+    await expect(page.getByRole('checkbox', { name: 'Select all', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Switch account', exact: true }).filter({ visible: true }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Remove Account 2', exact: true }).click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Remove account', exact: true })
+      .click();
+    await expect(page.getByRole('checkbox', { name: 'Select all', exact: true })).toHaveCount(0);
+    await expect(
+      page.getByRole('link', { name: 'Manage accounts', exact: true }).filter({ visible: true }),
+    ).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  });
+}
+
 for (const viewport of [
   { width: 1440, height: 900 },
   { width: 1280, height: 360 },
@@ -93,7 +149,9 @@ for (const viewport of [
 ]) {
   test(`account header and login help fit ${viewport.width}x${viewport.height}`, async ({
     page,
+    request,
   }) => {
+    await seed(request);
     await page.setViewportSize(viewport);
     await page.goto('/settings#account');
     const add = page.getByRole('button', { name: 'Add account', exact: true });
@@ -101,7 +159,7 @@ for (const viewport of [
     await expect(header.getByRole('checkbox', { name: 'Select all', exact: true })).toBeVisible();
     const addBox = (await add.boundingBox())!;
     const headerBox = (await header.boundingBox())!;
-    expect(headerBox.x + headerBox.width - addBox.x - addBox.width).toBeCloseTo(16);
+    expect(headerBox.x + headerBox.width - addBox.x - addBox.width).toBeCloseTo(12);
     await expect(page.locator('#settings-account .account-identity').locator('../..')).toHaveCSS(
       'border-top-width',
       '0px',

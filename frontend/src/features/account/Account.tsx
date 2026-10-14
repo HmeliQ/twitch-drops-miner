@@ -8,9 +8,11 @@ import { readableNameColor } from './profile';
 
 export default function AccountIdentity({
   profile,
+  name,
   compact = false,
 }: {
   profile?: AccountProfile;
+  name?: string;
   compact?: boolean;
 }) {
   const t = useT();
@@ -45,7 +47,7 @@ export default function AccountIdentity({
           className="truncate font-semibold"
           style={{ color: readableNameColor(profile?.color ?? null) }}
         >
-          {profile?.display_name ?? t('account')}
+          {name || profile?.display_name || t('account')}
         </span>
         {!compact && badges}
       </span>

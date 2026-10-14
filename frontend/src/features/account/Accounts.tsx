@@ -133,156 +133,188 @@ export default function Accounts() {
     setLabel(account.label);
     setAssociate(false);
   }
+  function accountActions(account: AccountSummary) {
+    return (
+      <>
+        {!account.connected && !account.unavailable && (
+          <Button disabled={disabled} className="shrink-0" onClick={() => void login(account)}>
+            {t('accounts_sign_in')}
+          </Button>
+        )}
+        {account.unavailable && (
+          <Button
+            disabled={disabled}
+            onClick={() => void command.run(() => action({ action: 'retry', id: account.id }))}
+          >
+            {t('retry')}
+          </Button>
+        )}
+        <IconButton
+          path={mdiPencil}
+          label={t('accounts_rename_name', {
+            name: accountName(account) || t('account'),
+          })}
+          disabled={disabled}
+          onClick={() => openMenu(account, 'rename')}
+        />
+        <IconButton
+          path={mdiLogout}
+          label={t('accounts_sign_out_name', {
+            name: accountName(account) || t('account'),
+          })}
+          disabled={disabled || !account.connected}
+          onClick={() => openMenu(account, 'sign_out')}
+        />
+        <IconButton
+          path={mdiDeleteOutline}
+          label={t('accounts_remove_name', {
+            name: accountName(account) || t('account'),
+          })}
+          disabled={disabled}
+          onClick={() => openMenu(account, 'remove')}
+        />
+      </>
+    );
+  }
+  const addAccount = (
+    <IconButton
+      path={mdiAccountPlusOutline}
+      label={t(overview?.login ? 'accounts_continue_login' : 'accounts_add')}
+      disabled={disabled || (!overview?.login && accounts.length >= (overview?.limit ?? 20))}
+      onClick={() => (overview?.login ? setLoginOpen(true) : void login())}
+    />
+  );
   return (
     <div className="space-y-4">
-      <div className="overflow-hidden rounded border border-divider">
-        <div className="flex min-h-14 flex-wrap items-center gap-x-4 gap-y-2 border-b border-divider px-4 py-2">
-          {!!accounts.length && (
-            <Check
-              label={
-                checked.length
-                  ? t('accounts_selected', { count: checked.length })
-                  : t('accounts_select_all')
-              }
-              checked={checked.length === accounts.length}
-              onChange={(value) => setChecked(value ? accounts.map((account) => account.id) : [])}
-            />
-          )}
-          <Button
-            className="ms-auto"
-            disabled={disabled || (!overview?.login && accounts.length >= (overview?.limit ?? 20))}
-            onClick={() => (overview?.login ? setLoginOpen(true) : void login())}
-          >
-            <Icon path={mdiAccountPlusOutline} className="mdi-icon" />
-            {t(overview?.login ? 'accounts_continue_login' : 'accounts_add')}
-          </Button>
-          {!!targets.length && (
-            <div className="flex w-full flex-wrap gap-2">
-              <Button disabled={disabled} onClick={() => void pause(true)}>
-                <Icon path={mdiPause} className="mdi-icon" />
-                {t('accounts_pause')}
-              </Button>
-              <Button disabled={disabled} onClick={() => void pause(false)}>
-                <Icon path={mdiPlay} className="mdi-icon" />
-                {t('accounts_resume')}
-              </Button>
-              <IconButton
-                path={mdiContentCopy}
-                label={t('accounts_copy')}
-                disabled={disabled || accounts.length < 2}
-                onClick={() => {
-                  command.clear();
-                  setResult(null);
-                  setRetryPause(null);
-                  setCopySource(
-                    sources.find((account) => account.id === selected)?.id ?? sources[0]?.id ?? '',
-                  );
-                  setCopyAutoClaim(false);
-                  setCopy(true);
-                }}
-              />
-            </div>
-          )}
-          {accounts.length >= (overview?.limit ?? 20) && (
-            <p className="w-full text-xs text-muted">{t('account_limit')}</p>
-          )}
-        </div>
-        <div
-          className="max-h-[min(55dvh,540px)] overflow-y-auto overscroll-contain divide-y divide-divider"
-          aria-label={t('accounts')}
-        >
-          {accounts.map((account) => (
-            <div
-              key={account.id}
-              className="grid min-h-20 grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1 px-4 py-3 sm:grid-cols-[auto_auto_minmax(0,1fr)_auto]"
-            >
-              <label className="flex min-h-11 shrink-0 items-center">
+      {accounts.length > 1 ? (
+        <div className="overflow-hidden rounded border border-divider">
+          <div className="flex min-h-14 items-center gap-1 border-b border-divider px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <label className="flex min-h-11 min-w-0 items-center gap-2 text-soft">
                 <input
                   type="checkbox"
-                  className="size-4 accent-soft"
-                  checked={checked.includes(account.id)}
+                  className="size-4 shrink-0 accent-soft"
+                  checked={checked.length === accounts.length}
                   onChange={(event) =>
-                    setChecked((previous) =>
-                      event.target.checked
-                        ? [...previous, account.id]
-                        : previous.filter((id) => id !== account.id),
-                    )
+                    setChecked(event.target.checked ? accounts.map((account) => account.id) : [])
                   }
                 />
-                <span className="sr-only">
-                  {t('accounts_select', { name: accountName(account) || t('account') })}
+                <span className={checked.length ? 'max-sm:sr-only' : ''}>
+                  {checked.length
+                    ? t('accounts_selected', { count: checked.length })
+                    : t('accounts_select_all')}
                 </span>
+                {!!checked.length && (
+                  <span className="sm:hidden" aria-hidden="true">
+                    {checked.length}
+                  </span>
+                )}
               </label>
-              <Art url={account.avatar_url} className="size-9! rounded-full!" />
-              <div className="min-w-0 flex-1">
-                <button
-                  type="button"
-                  className="text-link max-w-full truncate text-start font-medium"
-                  aria-current={selected === account.id ? 'true' : undefined}
-                  onClick={() => select(account.id)}
-                >
-                  {accountName(account) || t('account')}
-                </button>
-                <p className="truncate text-[13px] text-muted">
-                  {t(accountStatus(account))}
-                  {account.connected && !account.paused && account.game ? `: ${account.game}` : ''}
-                </p>
-                {account.connected && !account.paused && account.reward && (
-                  <p className="truncate text-xs text-muted">{account.reward}</p>
-                )}
-              </div>
-              <div className="col-start-3 flex flex-wrap items-center justify-end gap-1 sm:col-start-auto">
-                {!account.connected && !account.unavailable && (
-                  <Button
-                    disabled={disabled}
-                    className="shrink-0"
-                    onClick={() => void login(account)}
-                  >
-                    {t('accounts_sign_in')}
-                  </Button>
-                )}
-                {account.unavailable && (
-                  <Button
-                    disabled={disabled}
-                    onClick={() =>
-                      void command.run(() => action({ action: 'retry', id: account.id }))
-                    }
-                  >
-                    {t('retry')}
-                  </Button>
-                )}
-                <IconButton
-                  path={mdiPencil}
-                  label={t('accounts_rename_name', {
-                    name: accountName(account) || t('account'),
-                  })}
-                  disabled={disabled}
-                  onClick={() => openMenu(account, 'rename')}
-                />
-                <IconButton
-                  path={mdiLogout}
-                  label={t('accounts_sign_out_name', {
-                    name: accountName(account) || t('account'),
-                  })}
-                  disabled={disabled || !account.connected}
-                  onClick={() => openMenu(account, 'sign_out')}
-                />
-                <IconButton
-                  path={mdiDeleteOutline}
-                  label={t('accounts_remove_name', {
-                    name: accountName(account) || t('account'),
-                  })}
-                  disabled={disabled}
-                  onClick={() => openMenu(account, 'remove')}
-                />
-              </div>
             </div>
-          ))}
-          {!accounts.length && (
-            <Empty title={t('accounts_empty')} detail={t('accounts_empty_help')} />
-          )}
+
+            {!!targets.length && (
+              <div className="flex shrink-0 items-center gap-1">
+                <IconButton
+                  path={mdiPause}
+                  label={t('accounts_pause')}
+                  disabled={disabled}
+                  onClick={() => void pause(true)}
+                />
+                <IconButton
+                  path={mdiPlay}
+                  label={t('accounts_resume')}
+                  disabled={disabled}
+                  onClick={() => void pause(false)}
+                />
+                <IconButton
+                  path={mdiContentCopy}
+                  label={t('accounts_copy')}
+                  disabled={disabled || accounts.length < 2}
+                  onClick={() => {
+                    command.clear();
+                    setResult(null);
+                    setRetryPause(null);
+                    setCopySource(
+                      sources.find((account) => account.id === selected)?.id ??
+                        sources[0]?.id ??
+                        '',
+                    );
+                    setCopyAutoClaim(false);
+                    setCopy(true);
+                  }}
+                />
+              </div>
+            )}
+            {addAccount}
+          </div>
+          <div
+            className="max-h-[min(55dvh,540px)] overflow-y-auto overscroll-contain divide-y divide-divider"
+            aria-label={t('accounts')}
+          >
+            {accounts.map((account) => (
+              <div
+                key={account.id}
+                className="grid min-h-20 grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1 px-4 py-3 sm:grid-cols-[auto_auto_minmax(0,1fr)_auto]"
+              >
+                <label className="flex min-h-11 shrink-0 items-center">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-soft"
+                    checked={checked.includes(account.id)}
+                    onChange={(event) =>
+                      setChecked((previous) =>
+                        event.target.checked
+                          ? [...previous, account.id]
+                          : previous.filter((id) => id !== account.id),
+                      )
+                    }
+                  />
+                  <span className="sr-only">
+                    {t('accounts_select', { name: accountName(account) || t('account') })}
+                  </span>
+                </label>
+                <Art url={account.avatar_url} className="size-9! rounded-full!" />
+                <div className="min-w-0 flex-1">
+                  <button
+                    type="button"
+                    className="text-link max-w-full truncate text-start font-medium"
+                    aria-current={selected === account.id ? 'true' : undefined}
+                    onClick={() => select(account.id)}
+                  >
+                    {accountName(account) || t('account')}
+                  </button>
+                  <p className="truncate text-[13px] text-muted">
+                    {t(accountStatus(account))}
+                    {account.connected && !account.paused && account.game
+                      ? `: ${account.game}`
+                      : ''}
+                  </p>
+                  {account.connected && !account.paused && account.reward && (
+                    <p className="truncate text-xs text-muted">{account.reward}</p>
+                  )}
+                </div>
+                <div className="col-start-3 flex flex-wrap items-center justify-end gap-1 sm:col-start-auto">
+                  {accountActions(account)}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : !data?.login.user_id ? (
+        <div className="flex flex-wrap items-center justify-end gap-1">
+          {accounts[0] && accountActions(accounts[0])}
+          {addAccount}
+        </div>
+      ) : null}
+      {accounts.length >= (overview?.limit ?? 20) && (
+        <p className="text-xs text-muted">{t('account_limit')}</p>
+      )}
+      {!accounts.length && <Empty title={t('accounts_empty')} detail={t('accounts_empty_help')} />}
+      {accounts.length === 1 && !accounts[0]!.connected && (
+        <p className="text-muted text-sm">
+          {accountName(accounts[0]!)}: {t(accountStatus(accounts[0]!))}
+        </p>
+      )}
       <ActionResult action={command} />
       {result && (
         <div className="space-y-2" role="status">
@@ -335,8 +367,11 @@ export default function Accounts() {
       )}
       {data?.login.user_id && (
         <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <AccountIdentity profile={data.login.profile} />
+          <div className="flex flex-wrap items-center gap-2">
+            <AccountIdentity
+              profile={data.login.profile}
+              name={accounts.length === 1 ? accountName(accounts[0]!) : undefined}
+            />
             {data.login.profile?.login && (
               <a
                 className="icon-button"
@@ -348,6 +383,12 @@ export default function Accounts() {
               >
                 <Icon path={mdiOpenInNew} className="mdi-icon" />
               </a>
+            )}
+            {accounts.length <= 1 && (
+              <div className="ms-auto flex flex-wrap items-center gap-1">
+                {accounts[0] && accountActions(accounts[0])}
+                {addAccount}
+              </div>
             )}
           </div>
           <AccountBadges key={data.login.user_id} profile={data.login.profile} />

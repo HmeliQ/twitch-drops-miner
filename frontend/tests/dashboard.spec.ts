@@ -641,7 +641,7 @@ test('confirmed progress and compact desktop design', async ({ page }) => {
   await expect(
     page
       .locator('aside')
-      .getByRole('button', { name: 'Switch account', exact: true })
+      .getByRole('link', { name: 'Manage accounts', exact: true })
       .filter({ visible: true }),
   ).toBeVisible();
   const github = page.getByRole('link', { name: 'GitHub repository' }).locator('svg path');
@@ -649,7 +649,7 @@ test('confirmed progress and compact desktop design', async ({ page }) => {
   expect(githubBox.width).toBeCloseTo(32, 1);
   const accountBox = (await page
     .locator('aside')
-    .getByRole('button', { name: 'Switch account', exact: true })
+    .getByRole('link', { name: 'Manage accounts', exact: true })
     .filter({ visible: true })
     .boundingBox())!;
   expect(githubBox.y + githubBox.height).toBeLessThan(accountBox.y);
@@ -1005,7 +1005,7 @@ test('Overview fits the desktop viewport and only scrolls the page when space is
   await expect(
     page
       .locator('aside')
-      .getByRole('button', { name: 'Switch account', exact: true })
+      .getByRole('link', { name: 'Manage accounts', exact: true })
       .filter({ visible: true }),
   ).toBeInViewport();
   await page.screenshot({ path: '../artifacts/overview-short-window.png', fullPage: true });

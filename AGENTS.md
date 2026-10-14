@@ -198,7 +198,10 @@ embed it and run without a build tool/runtime companion. Production builds never
   Done stays disabled after accepted login confirmation until verification ends, including
   after reopening the dialog. Account rows expose rename/sign-out/remove icon buttons;
   profile and badges stay expanded without a separator above them. Keep Add account at the
-  top right of the account table and its login help beside the dialog title. Dialog help
+  top right of the account table, with icon-only bulk actions on the same row, and its
+  login help beside the dialog title. With one account, omit the table and bulk controls,
+  retain account actions beside the profile, and link the sidebar/compact profile directly
+  to Accounts settings. Use the switcher and table when more accounts are added. Dialog help
   uses viewport placement so the full text is not squeezed by the dialog's anchor area.
   Put explanatory text in the existing info popover,
   keeping errors and destructive-action confirmations visible.

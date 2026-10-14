@@ -54,7 +54,7 @@ for (const viewport of [
       await page.goto('/');
       const link = page
         .locator('aside')
-        .getByRole('button', { name: 'Switch account', exact: true })
+        .getByRole('link', { name: 'Manage accounts', exact: true })
         .filter({ visible: true });
       await expect(link).toBeVisible();
       const avatar = link.locator('img').first();
@@ -80,7 +80,6 @@ for (const viewport of [
         .screenshot({ path: `../artifacts/account-sidebar-${viewport.width}.png` });
       await link.focus();
       await link.press('Enter');
-      await page.getByRole('link', { name: 'Manage accounts', exact: true }).click();
     } else {
       await page.goto('/settings#account');
     }
@@ -182,6 +181,6 @@ test('account settings handle missing and empty badge collections, broken art, a
   await expect(settings.getByRole('link', { name: 'Open Twitch profile' })).toHaveCount(0);
   await expect(badges).toHaveCount(0);
   await expect(
-    page.getByRole('button', { name: 'Switch account', exact: true }).filter({ visible: true }),
+    page.getByRole('link', { name: 'Manage accounts', exact: true }).filter({ visible: true }),
   ).toBeVisible();
 });

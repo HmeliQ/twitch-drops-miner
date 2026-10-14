@@ -1,5 +1,5 @@
 import { Link } from '../../app/accountNavigation';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '@mdi/react';
 import { mdiAccountMultipleOutline, mdiCheck } from '@mdi/js';
 import { useAccounts, type AccountSummary } from '../../app/accounts';
@@ -37,7 +37,48 @@ export default function AccountSwitcher({ compact = false }: { compact?: boolean
   }, []);
   const t = useT();
   const accounts = overview?.accounts ?? [];
+  useEffect(() => {
+    if (accounts.length <= 1) close();
+  }, [accounts.length, close]);
   const current = accounts.find((account) => account.id === selected);
+  const triggerClass = compact
+    ? 'icon-button size-11 shrink-0'
+    : 'account-trigger mt-1 flex min-h-11 w-full min-w-0 items-center gap-2 rounded text-start';
+  const identity = (
+    <>
+      {!compact && current && data?.login.profile ? (
+        <span className="min-w-0 flex-1">
+          <AccountIdentity
+            compact
+            profile={{
+              ...data.login.profile,
+              display_name: current.label || data.login.profile.display_name,
+            }}
+          />
+        </span>
+      ) : current ? (
+        <Art url={current.avatar_url} className="size-7! rounded-full!" />
+      ) : (
+        <Icon path={mdiAccountMultipleOutline} className="mdi-icon" />
+      )}
+      {!compact && !data?.login.profile && (
+        <span className="min-w-0 flex-1 truncate">
+          {current ? accountName(current) || t('account') : t('accounts')}
+        </span>
+      )}
+    </>
+  );
+  if (accounts.length <= 1)
+    return (
+      <Link
+        to="/settings#account"
+        className={triggerClass}
+        aria-label={t('accounts_manage')}
+        title={t('accounts_manage')}
+      >
+        {identity}
+      </Link>
+    );
   return (
     <AnchoredPopover
       label={t('accounts_switch')}
@@ -46,35 +87,8 @@ export default function AccountSwitcher({ compact = false }: { compact?: boolean
       maxHeight={460}
       onToggle={() => setOpen(!open)}
       onClose={close}
-      triggerClass={
-        compact
-          ? 'icon-button size-11 shrink-0'
-          : 'account-trigger mt-1 flex min-h-11 w-full min-w-0 items-center gap-2 rounded text-start'
-      }
-      triggerContent={
-        <>
-          {!compact && current && data?.login.profile ? (
-            <span className="min-w-0 flex-1">
-              <AccountIdentity
-                compact
-                profile={{
-                  ...data.login.profile,
-                  display_name: current.label || data.login.profile.display_name,
-                }}
-              />
-            </span>
-          ) : current ? (
-            <Art url={current.avatar_url} className="size-7! rounded-full!" />
-          ) : (
-            <Icon path={mdiAccountMultipleOutline} className="mdi-icon" />
-          )}
-          {!compact && !data?.login.profile && (
-            <span className="min-w-0 flex-1 truncate">
-              {current ? accountName(current) || t('account') : t('accounts')}
-            </span>
-          )}
-        </>
-      }
+      triggerClass={triggerClass}
+      triggerContent={identity}
     >
       {accounts.length > 6 && (
         <div className="shrink-0 p-3">
