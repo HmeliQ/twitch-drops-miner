@@ -1,5 +1,15 @@
 # Changelog
 
+## [v2.3.0](https://github.com/ohne-b/twitch-drops-miner/releases/tag/v2.3.0) — 2026-10-14
+
+- add optional confirmed-progress percentages in Mining preferences ([#118](https://github.com/ohne-b/twitch-drops-miner/pull/118))
+- separate Games and Filters into overlay dropdowns, simplify campaign filters and fix mobile selection and reward counts ([#119](https://github.com/ohne-b/twitch-drops-miner/pull/119))
+- keep Games, Available and History list borders fixed while their contents scroll ([#120](https://github.com/ohne-b/twitch-drops-miner/pull/120))
+- combine manual channel search, selection and timers in one picker, with clearer controls and reliable keyboard focus ([#121](https://github.com/ohne-b/twitch-drops-miner/pull/121))
+- make Up next games collapsible, automatically expand the new first game and hide completed watch requirements from the queue ([#122](https://github.com/ohne-b/twitch-drops-miner/pull/122))
+- simplify campaign details, completed-progress labels and account links, and keep the watched streamer's link without a duplicate avatar in Now mining ([#122](https://github.com/ohne-b/twitch-drops-miner/pull/122))
+- place the desktop update link beside GitHub and restore download progress without shifting the layout ([#113](https://github.com/ohne-b/twitch-drops-miner/pull/113))
+
 ## [v2.2.0](https://github.com/ohne-b/twitch-drops-miner/releases/tag/v2.2.0) — 2026-10-12
 
 - add optional private-chat Telegram controls for status, pause, resume and game selection on desktop and server ([#109](https://github.com/ohne-b/twitch-drops-miner/pull/109))
