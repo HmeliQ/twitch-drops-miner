@@ -452,7 +452,9 @@ test('simplified captions and settings retain progress, recovery and refresh con
       const tabs = (await page
         .getByRole('navigation', { name: 'Settings sections' })
         .boundingBox())!;
-      await expect(content.getByRole('heading')).toHaveText([]);
+      await expect(content.getByRole('heading')).toHaveText(
+        section === 'account' ? ['Badges'] : [],
+      );
       const first = (await content.locator(':scope > :first-child').boundingBox())!;
       const offset = first.y - tabs.y - tabs.height;
       contentOffset ??= offset;

@@ -205,7 +205,13 @@ test('shared connection changes require save and cannot be written through a sco
   await quality.selectOption('5');
   await switchTo(page, 'Account 2');
   await expect(quality).toHaveValue('5');
+  const saved = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/api/accounts' &&
+      response.request().method() === 'POST',
+  );
   await page.getByRole('button', { name: 'Save', exact: true }).click();
+  expect((await saved).status()).toBe(200);
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
   expect((await settings(request, 'primary')).connection_quality).toBe(5);
   expect((await settings(request, second)).connection_quality).toBe(5);

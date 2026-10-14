@@ -2476,7 +2476,7 @@ test('icon actions and authorization row use compact accessible controls', async
     .poll(() => filters.evaluate((node) => getComputedStyle(node).backgroundColor))
     .toBe('rgb(51, 51, 51)');
   await page.goto('/settings');
-  await page.locator('#settings-account summary').click();
+  await expect(page.locator('#settings-account summary')).toHaveCount(0);
   await expect(page.locator('#settings-account .account-identity')).toBeVisible();
   await expect(page.locator('#settings-account')).not.toContainText('Dashboard connected');
 
