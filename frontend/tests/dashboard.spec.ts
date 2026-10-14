@@ -473,10 +473,10 @@ for (const width of [1280, 320]) {
     });
     await page.goto('/settings');
     const account = page.locator('#settings-account');
-    const status = account.getByRole('button', { name: 'Twitch 123456', exact: true });
+    const identity = account.locator('.account-identity');
     const logout = account.getByRole('button', { name: 'Sign out Twitch 123456', exact: true });
     await expect(logout).toBeEnabled();
-    const h = (await status.locator('..').boundingBox())!;
+    const h = (await identity.boundingBox())!;
     const l = (await logout.boundingBox())!;
     expect(l.width).toBe(width < 768 ? 44 : 36);
     if (width >= 640) {

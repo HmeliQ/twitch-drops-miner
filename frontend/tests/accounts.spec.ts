@@ -142,6 +142,26 @@ for (const width of [1440, 320]) {
   });
 }
 
+test('the single-account shortcut recovers an unavailable account link', async ({ page }) => {
+  await page.goto('/?account=missing');
+  const manageLinks = page
+    .getByRole('link', { name: 'Manage accounts', exact: true })
+    .filter({ visible: true });
+  for (const link of await manageLinks.all())
+    await expect(link).toHaveAttribute('href', '/settings?account=primary#account');
+  const manage = page
+    .locator('aside')
+    .getByRole('link', { name: 'Manage accounts', exact: true })
+    .filter({ visible: true });
+  await expect(manage).toHaveAttribute('href', '/settings?account=primary#account');
+  await manage.click();
+  await expect(page).toHaveURL(/\/settings\?account=primary#account$/);
+  await expect(page.locator('#settings-account .account-identity')).toContainText('Twitch 123456');
+  await expect(
+    page.getByRole('button', { name: 'Sign out Twitch 123456', exact: true }),
+  ).toBeEnabled();
+});
+
 for (const viewport of [
   { width: 1440, height: 900 },
   { width: 1280, height: 360 },

@@ -12,13 +12,16 @@ export function useAccountPath(to: To) {
   const { selected, overview } = useAccounts();
   const location = useLocation();
   const resolved = useResolvedPath(to);
+  const account = selected ?? (overview?.accounts.length === 1 ? overview.accounts[0]!.id : null);
   if (
-    !selected ||
-    ((overview?.accounts.length ?? 0) <= 1 && !new URLSearchParams(location.search).has('account'))
+    !account ||
+    (selected &&
+      (overview?.accounts.length ?? 0) <= 1 &&
+      !new URLSearchParams(location.search).has('account'))
   )
     return to;
   const params = new URLSearchParams(resolved.search);
-  if (!params.has('account')) params.set('account', selected);
+  if (!params.has('account')) params.set('account', account);
   return { ...resolved, search: `?${params}` };
 }
 
