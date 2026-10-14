@@ -452,7 +452,6 @@
             "accounts_remove_name": "Remove {name}",
             "accounts_empty": "No Twitch accounts",
             "accounts_empty_help": "Add a Twitch account to start mining.",
-            "accounts_bulk_result": "Updated {count} of {total} accounts.",
             "accounts_action_failed": "Could not update this account.",
             "accounts_retry_failed": "Retry failed accounts",
             "accounts_rename": "Rename",

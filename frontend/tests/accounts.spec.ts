@@ -76,8 +76,10 @@ for (const width of [1440, 390, 320]) {
     expect(boxes.every((box) => box.text === '' && box.y === boxes[0]!.y)).toBe(true);
     await toolbar.screenshot({ path: `../artifacts/account-toolbar-${width}.png` });
     await page.getByRole('button', { name: 'Pause', exact: true }).click();
-    await expect(page.getByRole('status')).toContainText('Updated 20 of 20 accounts.');
-    expect((await overview(request)).accounts.every((account) => account.paused)).toBe(true);
+    await expect
+      .poll(async () => (await overview(request)).accounts.every((account) => account.paused))
+      .toBe(true);
+    await expect(page.locator('#settings-account').getByRole('status')).toHaveCount(0);
     await page.getByRole('button', { name: 'Resume', exact: true }).click();
     await expect
       .poll(async () => (await overview(request)).accounts.every((account) => !account.paused))
@@ -128,12 +130,19 @@ for (const width of [1440, 320]) {
     await expect(
       page.getByRole('button', { name: 'Switch account', exact: true }).filter({ visible: true }),
     ).toBeVisible();
+    await page.getByRole('checkbox', { name: 'Select all', exact: true }).check();
+    await page.getByRole('button', { name: 'Pause', exact: true }).click();
+    await expect
+      .poll(async () => (await overview(request)).accounts.every((account) => account.paused))
+      .toBe(true);
+    await expect(page.locator('#settings-account').getByRole('status')).toHaveCount(0);
     await page.getByRole('button', { name: 'Remove Account 2', exact: true }).click();
     await page
       .getByRole('dialog')
       .getByRole('button', { name: 'Remove account', exact: true })
       .click();
     await expect(page.getByRole('checkbox', { name: 'Select all', exact: true })).toHaveCount(0);
+    await expect(page.locator('#settings-account').getByRole('status')).toHaveCount(0);
     await expect(
       page.getByRole('link', { name: 'Manage accounts', exact: true }).filter({ visible: true }),
     ).toBeVisible();
@@ -209,11 +218,47 @@ for (const viewport of [
     expect(bounds.scroll).toBeLessThanOrEqual(bounds.client + 1);
     expect(bounds.top).toBeGreaterThanOrEqual(0);
     expect(bounds.bottom).toBeLessThanOrEqual(viewport.height);
+    if (viewport.width >= 768)
+      expect(
+        Math.min(
+          Math.abs(bounds.top - helpBox.y - helpBox.height),
+          Math.abs(helpBox.y - bounds.bottom),
+        ),
+      ).toBeCloseTo(8);
     await page.screenshot({ path: `../artifacts/account-login-help-${viewport.width}.png` });
     await page.keyboard.press('Escape');
     await expect(note).not.toBeVisible();
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeEnabled();
+    await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+    for (const label of ['Display label', 'Mining preferences']) {
+      const fieldHelp = dialog.getByRole('button', { name: `${label} help`, exact: true });
+      await fieldHelp.click();
+      const fieldNote = dialog.getByRole('note', { name: `${label} help`, exact: true });
+      await expect(fieldNote).toBeVisible();
+      const box = (await fieldNote.boundingBox())!;
+      const anchor = (await fieldHelp.boundingBox())!;
+      expect(
+        await fieldNote.evaluate((element) => element.scrollHeight <= element.clientHeight + 1),
+      ).toBe(true);
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+      if (viewport.width >= 768)
+        expect(
+          Math.min(
+            Math.abs(box.y - anchor.y - anchor.height),
+            Math.abs(anchor.y - box.y - box.height),
+          ),
+        ).toBeCloseTo(8);
+      await page.screenshot({
+        path: `../artifacts/account-${label.replaceAll(' ', '-')}-help-${viewport.width}.png`,
+      });
+      await page.keyboard.press('Escape');
+      await expect(fieldNote).not.toBeVisible();
+      await expect(dialog).toBeVisible();
+    }
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   });
 }
@@ -295,9 +340,12 @@ test('bulk actions keep successful accounts and retry only failures after a revi
     await route.continue();
   });
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('Updated 2 of 3 accounts.');
+  await expect(page.getByRole('status')).toContainText('Account 2');
   await page.getByRole('button', { name: 'Retry failed accounts', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('Updated 1 of 1 accounts.');
+  await expect(
+    page.getByRole('button', { name: 'Retry failed accounts', exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator('#settings-account').getByRole('status')).toHaveCount(0);
   expect(targets).toEqual([['primary', second, third], [second]]);
   expect((await settings(request, second)).games_to_watch).toEqual(['Changed elsewhere']);
 });

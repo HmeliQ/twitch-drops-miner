@@ -202,7 +202,9 @@ embed it and run without a build tool/runtime companion. Production builds never
   login help beside the dialog title. With one account, omit the table and bulk controls,
   retain account actions beside the profile, and link the sidebar/compact profile directly
   to Accounts settings. Use the switcher and table when more accounts are added. Dialog help
-  uses viewport placement so the full text is not squeezed by the dialog's anchor area.
+  uses the existing anchored desktop placement with content-sized height to avoid clipping;
+  retain viewport placement on phones and browsers without anchor positioning.
+  Bulk actions stay quiet on success; show only failures for retained accounts with a retry action.
   Put explanatory text in the existing info popover,
   keeping errors and destructive-action confirmations visible.
 - Desktop tray actions distinguish the viewed account from all accounts and capture revisions.

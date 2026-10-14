@@ -72,7 +72,10 @@ export default function Accounts() {
   );
   const targets = accounts.filter((account) => checked.includes(account.id));
   const disabled = !connected || command.busy;
-  const failures = result?.results.filter((result) => !result.ok) ?? [];
+  const failures =
+    result?.results.filter(
+      (result) => !result.ok && accounts.some((account) => account.id === result.id),
+    ) ?? [];
   async function pause(paused: boolean, ids = checked) {
     setRetryPause(paused);
     setRetryCopy(null);
@@ -316,52 +319,42 @@ export default function Accounts() {
         </p>
       )}
       <ActionResult action={command} />
-      {result && (
+      {!!failures.length && (
         <div className="space-y-2" role="status">
-          <p className="text-[13px] text-muted">
-            {t('accounts_bulk_result', {
-              count: result.results.filter((result) => result.ok).length,
-              total: result.results.length,
-            })}
-          </p>
-          {!!failures.length && (
-            <>
-              <ul className="space-y-1 text-[13px]">
-                {failures.map((failure) => (
-                  <li key={failure.id}>
-                    {accountName(
-                      accounts.find((account) => account.id === failure.id) ??
-                        ({ label: failure.id } as AccountSummary),
-                    )}
-                    :{' '}
-                    {t(
-                      failure.error === 'settings_conflict'
-                        ? 'settings_conflict'
-                        : 'accounts_action_failed',
-                    )}
-                  </li>
-                ))}
-              </ul>
-              {(retryPause !== null || retryCopy) && (
-                <Button
-                  disabled={disabled}
-                  onClick={() =>
-                    void (retryCopy
-                      ? copyPreferences(
-                          retryCopy.source,
-                          retryCopy.autoClaim,
-                          failures.map((failure) => failure.id),
-                        )
-                      : pause(
-                          retryPause!,
-                          failures.map((failure) => failure.id),
-                        ))
-                  }
-                >
-                  {t('accounts_retry_failed')}
-                </Button>
-              )}
-            </>
+          <ul className="space-y-1 text-[13px]">
+            {failures.map((failure) => (
+              <li key={failure.id}>
+                {accountName(
+                  accounts.find((account) => account.id === failure.id) ??
+                    ({ label: failure.id } as AccountSummary),
+                )}
+                :{' '}
+                {t(
+                  failure.error === 'settings_conflict'
+                    ? 'settings_conflict'
+                    : 'accounts_action_failed',
+                )}
+              </li>
+            ))}
+          </ul>
+          {(retryPause !== null || retryCopy) && (
+            <Button
+              disabled={disabled}
+              onClick={() =>
+                void (retryCopy
+                  ? copyPreferences(
+                      retryCopy.source,
+                      retryCopy.autoClaim,
+                      failures.map((failure) => failure.id),
+                    )
+                  : pause(
+                      retryPause!,
+                      failures.map((failure) => failure.id),
+                    ))
+              }
+            >
+              {t('accounts_retry_failed')}
+            </Button>
           )}
         </div>
       )}
