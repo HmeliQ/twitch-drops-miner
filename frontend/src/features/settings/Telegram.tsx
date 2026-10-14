@@ -1,7 +1,9 @@
+import type { ActionState } from '../../shared/ui';
 import { useEffect, useState } from 'react';
 import { mdiContentSave, mdiDeleteOutline, mdiOpenInNew } from '@mdi/js';
 import { Icon } from '@mdi/react';
 import { ApiError, request } from '../../shared/lib/api';
+import { useSharedState } from '../../app/accounts';
 import { useT } from '../../shared/lib/i18n';
 import {
   ActionResult,
@@ -32,17 +34,29 @@ interface BotIdentity {
 
 export default function Telegram({ connected }: { connected: boolean }) {
   const t = useT();
-  const action = useAction();
-  const [saved, setSaved] = useState<Configuration>();
+  const action = useAction(
+    useSharedState<ActionState>('telegram.action', { busy: false, error: '', success: '' }),
+  );
+  const [saved, setSaved] = useSharedState<Configuration | undefined>('telegram.saved', undefined);
   const [identity, setIdentity] = useState<BotIdentity>();
-  const [enabled, setEnabled] = useState(false);
-  const [remoteControl, setRemoteControl] = useState(false);
-  const [includeImage, setIncludeImage] = useState(false);
-  const [chat, setChat] = useState('');
-  const [token, setToken] = useState('');
+  const [enabled, setEnabled] = useSharedState('telegram.enabled', false);
+  const [remoteControl, setRemoteControl] = useSharedState('telegram.remote', false);
+  const [includeImage, setIncludeImage] = useSharedState('telegram.image', false);
+  const [chat, setChat] = useSharedState('telegram.chat', '');
+  const [token, setToken] = useSharedState('telegram.token', '');
   const [loadFailed, setLoadFailed] = useState(false);
   const [reload, setReload] = useState(0);
   useEffect(() => {
+    if (
+      action.busy ||
+      (saved &&
+        (enabled !== saved.enabled ||
+          remoteControl !== saved.remote_control ||
+          includeImage !== saved.include_image ||
+          chat !== saved.chat_id ||
+          token !== ''))
+    )
+      return;
     const controller = new AbortController();
     setSaved(undefined);
     setToken('');
@@ -104,7 +118,7 @@ export default function Telegram({ connected }: { connected: boolean }) {
     });
   }
   return (
-    <section id="notifications" className="max-w-md space-y-4">
+    <section id="settings-notifications" className="max-w-md space-y-4">
       <div className="flex items-center gap-1">
         <h2 className="font-semibold">Telegram</h2>
         <HelpButton label="Telegram" text={t('telegram_help')} />
@@ -122,6 +136,7 @@ export default function Telegram({ connected }: { connected: boolean }) {
           </a>
         )}
       </div>
+      <p className="text-[13px] text-muted">{t('accounts_telegram_help')}</p>
       {loadFailed ? (
         <Notice error>{t('gui.auth.request_failed')}</Notice>
       ) : (

@@ -9,6 +9,8 @@ import {
   type ReactNode,
   type ReactElement,
   type RefObject,
+  type Dispatch,
+  type SetStateAction,
 } from 'react';
 import {
   mdiClose,
@@ -275,35 +277,40 @@ export function Notice({ children, error = false }: { children: ReactNode; error
     </div>
   );
 }
-export function useAction() {
+export interface ActionState {
+  busy: boolean;
+  error: string;
+  success: string;
+}
+export function useAction(shared?: [ActionState, Dispatch<SetStateAction<ActionState>>]) {
   const t = useT();
   const pending = useRef(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const local = useState<ActionState>({ busy: false, error: '', success: '' });
+  const [state, setState] = shared ?? local;
+  const { busy, error, success } = state;
   async function run(action: () => Promise<unknown>, message = '') {
-    if (pending.current) return false;
+    if (pending.current || busy) return false;
     pending.current = true;
-    setBusy(true);
-    setError('');
-    setSuccess('');
+    setState({ busy: true, error: '', success: '' });
     try {
       await action();
-      setSuccess(message);
+      setState((value) => ({ ...value, success: message }));
       return true;
     } catch (error) {
-      setError(
+      const message =
         error instanceof ApiError && error.message === 'settings_conflict'
           ? t('settings_conflict')
-          : error instanceof ApiError &&
-              t(`gui.auth.${error.message}`) !== `gui.auth.${error.message}`
-            ? t(`gui.auth.${error.message}`)
-            : t('gui.auth.request_failed'),
-      );
+          : error instanceof ApiError && t(error.message) !== error.message
+            ? t(error.message)
+            : error instanceof ApiError &&
+                t(`gui.auth.${error.message}`) !== `gui.auth.${error.message}`
+              ? t(`gui.auth.${error.message}`)
+              : t('gui.auth.request_failed');
+      setState((value) => ({ ...value, error: message }));
       return false;
     } finally {
       pending.current = false;
-      setBusy(false);
+      setState((value) => ({ ...value, busy: false }));
     }
   }
   return {
@@ -312,8 +319,7 @@ export function useAction() {
     success,
     run,
     clear: () => {
-      setError('');
-      setSuccess('');
+      setState((value) => ({ ...value, error: '', success: '' }));
     },
   };
 }

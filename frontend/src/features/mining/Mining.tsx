@@ -1,10 +1,11 @@
+import { Link } from '../../app/accountNavigation';
 import MiningPreferences from './MiningPreferences';
 import UpNext, { type useUpNextState } from './UpNext';
 import ChannelPicker from './ChannelPicker';
 import { CampaignLink } from '../campaigns/CampaignLink';
 import { Icon } from '@mdi/react';
 import { useEffect, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { useSearchParams } from 'react-router';
 import {
   mdiPencil,
   mdiRefreshAuto,
@@ -17,7 +18,6 @@ import {
 import { InventoryRefreshButton } from '../../shared/ui/InventoryRefreshButton';
 import { useMiner } from '../../app/MinerProvider';
 import { useT } from '../../shared/lib/i18n';
-import { request } from '../../shared/lib/api';
 import { confirmedPercent } from '../../shared/lib/progress';
 import {
   Art,
@@ -31,7 +31,7 @@ import {
   ConfirmedTime,
 } from '../../shared/ui/index';
 export default function Mining({ upNext }: { upNext: ReturnType<typeof useUpNextState> }) {
-  const { data, connected, autosave } = useMiner();
+  const { data, connected, autosave, request } = useMiner();
   const t = useT();
   const [params, setParams] = useSearchParams();
   const edit = params.get('edit') === 'priorities';

@@ -1,19 +1,11 @@
+import { Link, NavLink } from './accountNavigation';
 import { DesktopUpdateLink, DesktopUpdateProvider } from '../features/settings/DesktopUpdates';
 import { isDesktop } from '../shared/lib/platform';
 import { DesktopStartupError, DesktopStatus } from '../features/settings/Desktop';
 import { Icon } from '@mdi/react';
 import { invoke } from '@tauri-apps/api/core';
 import { useEffect, useRef, useState } from 'react';
-import {
-  NavLink,
-  Link,
-  Navigate,
-  Route,
-  Routes,
-  useLocation,
-  useNavigate,
-  useNavigationType,
-} from 'react-router';
+import { Navigate, Route, Routes, useLocation, useNavigate, useNavigationType } from 'react-router';
 import {
   mdiPlayCircleOutline,
   mdiReload,
@@ -34,14 +26,28 @@ import { useUpNextState } from '../features/mining/UpNext';
 import Campaigns from '../features/campaigns/Campaigns';
 import Activity from '../features/activity/Activity';
 import Settings from '../features/settings/Settings';
-import AccountIdentity from '../features/account/Account';
+import AccountSwitcher from '../features/account/AccountSwitcher';
+import { AccountsProvider, useAccounts } from './accounts';
+import { clearAutosaveDrafts } from './useAutosave';
 import Login from '../features/settings/Login';
 import logo from '../assets/twitch-drops-miner-logo.svg?no-inline';
 function Shell({ auth, onLogout }: { auth: AuthStatus; onLogout: () => Promise<void> }) {
   const { data, connected, incompatible, autosave } = useMiner();
+  const accounts = useAccounts();
+  const viewed = accounts.overview?.accounts.find((account) => account.id === accounts.selected);
   const upNext = useUpNextState(data);
+  useEffect(() => {
+    if (connected) {
+      const frame = requestAnimationFrame(accounts.restoreView);
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [connected, accounts.restoreView]);
   const t = useT();
-  const title = miningTitle(data, connected, t);
+  const baseTitle = miningTitle(data, connected, t);
+  const title =
+    accounts.overview && accounts.overview.accounts.length > 1 && viewed
+      ? `${viewed.label || viewed.name} - ${baseTitle}`
+      : baseTitle;
   useEffect(() => {
     document.title = title;
     if (isDesktop()) void invoke('desktop_title', { title }).catch(() => {});
@@ -103,6 +109,9 @@ function Shell({ auth, onLogout }: { auth: AuthStatus; onLogout: () => Promise<v
             />
             Drops Miner
           </NavLink>
+          <div className="ms-auto lg:hidden">
+            <AccountSwitcher compact />
+          </div>
         </div>
         <nav aria-label={t('navigation')} className="primary-nav">
           {links.map(([to, label, icon]) => (
@@ -133,20 +142,7 @@ function Shell({ auth, onLogout }: { auth: AuthStatus; onLogout: () => Promise<v
             {isDesktop() && <DesktopUpdateLink />}
           </div>
           <div className="hidden lg:block">
-            {data?.login.user_id != null && (
-              <Link
-                to="/settings#account"
-                className="account-trigger mt-1 flex min-h-11 w-full items-center rounded text-start"
-                aria-label={
-                  data.login.profile
-                    ? t('profile_open', { name: data.login.profile.display_name })
-                    : t('account')
-                }
-                title={t('account')}
-              >
-                <AccountIdentity profile={data.login.profile} compact />
-              </Link>
-            )}
+            <AccountSwitcher />
             {auth.enabled && (
               <Button
                 className="mt-3 w-full"
@@ -163,7 +159,11 @@ function Shell({ auth, onLogout }: { auth: AuthStatus; onLogout: () => Promise<v
         <div
           className={`mx-auto max-w-[1440px] ${location.pathname === '/' ? (new URLSearchParams(location.search).get('edit') === 'priorities' ? 'preferences-frame' : 'mining-frame') : location.pathname === '/campaigns' ? 'campaigns-frame' : location.pathname === '/activity' ? 'activity-frame' : ''}`}
         >
-          {!connected && (
+          {accounts.error && <Notice error>{t(accounts.error)}</Notice>}
+          {!accounts.connected && (
+            <Notice>{t(accounts.overview ? 'disconnected_help' : 'connecting')}</Notice>
+          )}
+          {accounts.connected && accounts.selected && !viewed?.unavailable && !connected && (
             <div className="mb-5">
               <Notice>
                 {t(incompatible ? 'client_outdated' : data ? 'disconnected_help' : 'connecting')}
@@ -204,24 +204,37 @@ function Shell({ auth, onLogout }: { auth: AuthStatus; onLogout: () => Promise<v
               />
             </Notice>
           )}
-          <Routes>
-            <Route path="/" element={<Mining upNext={upNext} />} />
-            <Route path="/campaigns" element={<Campaigns />} />
-            <Route path="/history" element={<Navigate to="/campaigns?tab=history" replace />} />
-            <Route path="/activity" element={<Activity />} />
-            <Route
-              path="/settings"
-              element={
-                location.hash === '#mining' ? (
-                  <Navigate to="/?edit=priorities" replace />
-                ) : (
-                  <Settings auth={auth} />
-                )
-              }
-            />
-            <Route path="/login" element={<Navigate to="/" replace />} />
-            <Route path="*" element={<Empty title={t('not_found')} />} />
-          </Routes>
+          {accounts.overview &&
+          location.pathname !== '/settings' &&
+          (!accounts.selected || viewed?.unavailable) ? (
+            <Empty
+              title={t(viewed?.unavailable ? 'accounts_unavailable' : 'accounts_empty')}
+              detail={t(viewed?.unavailable ? 'accounts_unavailable_help' : 'accounts_empty_help')}
+            >
+              <Link className="button" to="/settings#account">
+                {t('accounts_manage')}
+              </Link>
+            </Empty>
+          ) : (
+            <Routes>
+              <Route path="/" element={<Mining upNext={upNext} />} />
+              <Route path="/campaigns" element={<Campaigns />} />
+              <Route path="/history" element={<Navigate to="/campaigns?tab=history" replace />} />
+              <Route path="/activity" element={<Activity />} />
+              <Route
+                path="/settings"
+                element={
+                  location.hash === '#mining' ? (
+                    <Navigate to="/?edit=priorities" replace />
+                  ) : (
+                    <Settings auth={auth} />
+                  )
+                }
+              />
+              <Route path="/login" element={<Navigate to="/" replace />} />
+              <Route path="*" element={<Empty title={t('not_found')} />} />
+            </Routes>
+          )}
         </div>
       </main>
     </div>
@@ -234,6 +247,7 @@ export default function App() {
   const t = useT();
   async function refresh() {
     const state = await request<AuthStatus>('/api/auth/status');
+    if (!state.authenticated) clearAutosaveDrafts();
     setAuth(state);
     setError(false);
     if (state.authenticated && location.pathname === '/login') navigate('/', { replace: true });
@@ -241,6 +255,7 @@ export default function App() {
   useEffect(() => {
     void refresh().catch(() => setError(true));
     const expire = () => {
+      clearAutosaveDrafts();
       setAuth((current) => ({ ...current, enabled: true, authenticated: false }));
       navigate('/login', { replace: true });
     };
@@ -264,9 +279,9 @@ export default function App() {
       </I18n>
     );
   return (
-    <MinerProvider>
+    <AccountsProvider>
       <DesktopUpdateProvider>
-        <Shell
+        <AccountShell
           auth={auth}
           onLogout={async () => {
             await request('/api/auth/logout', {});
@@ -274,6 +289,27 @@ export default function App() {
           }}
         />
       </DesktopUpdateProvider>
+    </AccountsProvider>
+  );
+}
+
+function AccountShell(props: { auth: AuthStatus; onLogout: () => Promise<void> }) {
+  const { selected, overview, error, refresh } = useAccounts();
+  const t = useT();
+  if (!overview)
+    return (
+      <Empty title={t(error || 'loading')}>
+        {error && <Button onClick={() => void refresh().catch(() => {})}>{t('retry')}</Button>}
+      </Empty>
+    );
+  const account = overview.accounts.find((account) => account.id === selected);
+  return (
+    <MinerProvider
+      key={`${selected}:${account?.instance}:${account?.unavailable}`}
+      accountId={selected}
+      available={!!account && !account.unavailable}
+    >
+      <Shell {...props} />
     </MinerProvider>
   );
 }

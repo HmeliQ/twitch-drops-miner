@@ -1,8 +1,9 @@
+import { Link } from '../../app/accountNavigation';
 import { Icon } from '@mdi/react';
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router';
 import { mdiArrowLeft, mdiPriorityHigh, mdiReload, mdiPlus } from '@mdi/js';
 import type { Settings as SettingsData, GameMetadata } from '../../shared/lib/types';
+import { useAccountState } from '../../app/accounts';
 import { useMiner } from '../../app/MinerProvider';
 import { useT } from '../../shared/lib/i18n';
 import { GamePriorities } from './GamePriorities';
@@ -20,7 +21,7 @@ import {
 } from '../../shared/ui/index';
 
 export default function MiningPreferences() {
-  const { data, connected, autosave } = useMiner();
+  const { data, connected, autosave, request } = useMiner();
   const t = useT();
   const settings = data!.settings;
   const draft = autosave.draft ?? settings;
@@ -33,12 +34,15 @@ export default function MiningPreferences() {
     window.scrollTo(0, 0);
     heading.current?.focus({ preventScroll: true });
   }, []);
-  const [ignoredText, setIgnoredText] = useState(draft.drop_name_blacklist.join('\n'));
-  const [editingIgnored, setEditingIgnored] = useState(false);
+  const [ignoredText, setIgnoredText] = useAccountState(
+    'preferences.ignored',
+    draft.drop_name_blacklist.join('\n'),
+  );
+  const [editingIgnored, setEditingIgnored] = useAccountState('preferences.editingIgnored', false);
   useEffect(() => {
     if (!editingIgnored) setIgnoredText(draft.drop_name_blacklist.join('\n'));
   }, [draft.drop_name_blacklist, editingIgnored]);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useAccountState('preferences.search', '');
   const [gameError, setGameError] = useState('');
   const directory = useDirectorySearch<GameMetadata>(
     '/api/games',
@@ -52,7 +56,7 @@ export default function MiningPreferences() {
     const missing = draft.games_to_watch.filter((name) => !known.has(gameKey(name)));
     if (!missing.length) return;
     const controller = new AbortController();
-    void lookupGames(missing, controller.signal)
+    void lookupGames(missing, controller.signal, request)
       .then((games) => {
         if (!controller.signal.aborted && games.length) {
           change('game_metadata', (current) => [

@@ -341,7 +341,7 @@ test('filter save failures remain visible and recover through the existing retry
   request,
 }) => {
   await page.goto('/campaigns');
-  await page.route('**/api/settings', async (route) => {
+  await page.route('**/api/accounts/primary/settings', async (route) => {
     if (route.request().method() === 'POST')
       await route.fulfill({ status: 409, json: { detail: 'settings_conflict' } });
     else await route.continue();
@@ -353,7 +353,7 @@ test('filter save failures remain visible and recover through the existing retry
     (await (await request.get('/api/settings')).json()).inventory_filters.hide_selected_games,
   ).toBe(false);
   await page.keyboard.press('Escape');
-  await page.unroute('**/api/settings');
+  await page.unroute('**/api/accounts/primary/settings');
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
   await expect
     .poll(

@@ -79,7 +79,7 @@ test('Channel pages clamp invalid links and shrinking live lists, and Watch pres
   await expect(list.locator('.row')).toHaveCount(7);
   await pages.getByRole('button', { name: 'Previous page' }).click();
   const before = await (await request.get('/api/settings')).json();
-  const selected = page.waitForRequest('**/api/channels/select');
+  const selected = page.waitForRequest('**/api/accounts/primary/channels/select');
   await list.getByRole('button', { name: 'Watch Streamer 25', exact: true }).click();
   expect((await selected).postDataJSON()).toEqual({ channel_id: 25 });
   await expect(page.getByRole('button', { name: 'Return to Auto Mode' })).toBeVisible();
@@ -104,7 +104,8 @@ test('Campaign details have no streamer list or status lookup', async ({ page, r
   });
   const queries: string[] = [];
   page.on('request', (request) => {
-    if (request.url().endsWith('/api/campaigns/channels')) queries.push(request.url());
+    if (request.url().endsWith('/api/accounts/primary/campaigns/channels'))
+      queries.push(request.url());
   });
   await page.goto(`/campaigns?campaign=${campaign.id}`);
   const detail = page.getByRole('complementary', { name: 'Campaign details' });
@@ -161,7 +162,7 @@ for (const viewport of [
   }) => {
     await page.setViewportSize(viewport);
     const queries: unknown[] = [];
-    await page.route('**/api/channels/search', (route) => {
+    await page.route('**/api/accounts/primary/channels/search', (route) => {
       queries.push(route.request().postDataJSON());
       return route.fulfill({ json: found });
     });
@@ -212,7 +213,7 @@ for (const viewport of [
       path: `../artifacts/channel-search-${viewport.width}.png`,
       fullPage: true,
     });
-    const selection = page.waitForRequest('**/api/channels/select');
+    const selection = page.waitForRequest('**/api/accounts/primary/channels/select');
     await input.press('ArrowDown');
     await input.press('Enter');
     expect((await selection).postDataJSON()).toEqual({
@@ -265,7 +266,7 @@ test('manual channel search fences old replies and preserves exact entry after s
   const pending = new Promise<void>((done) => {
     release = done;
   });
-  await page.route('**/api/channels/search', async (route) => {
+  await page.route('**/api/accounts/primary/channels/search', async (route) => {
     if (route.request().postDataJSON().search === 'old') {
       await pending;
       await route.fulfill({ json: found }).catch(() => {});
@@ -276,7 +277,7 @@ test('manual channel search fences old replies and preserves exact entry after s
   await page.goto('/');
   await page.getByRole('button', { name: 'Mine channel', exact: true }).click();
   const input = page.getByRole('combobox', { name: 'Twitch channel name or URL' });
-  const old = page.waitForRequest('**/api/channels/search');
+  const old = page.waitForRequest('**/api/accounts/primary/channels/search');
   await input.fill('old');
   await old;
   await input.fill('https://www.twitch.tv/extra_streamer');
@@ -285,7 +286,7 @@ test('manual channel search fences old replies and preserves exact entry after s
   ).toBeVisible();
   release();
   await expect(page.getByRole('option')).toHaveCount(0);
-  const selection = page.waitForRequest('**/api/channels/select');
+  const selection = page.waitForRequest('**/api/accounts/primary/channels/select');
   await input.press('Enter');
   expect((await selection).postDataJSON().channel).toBe('https://www.twitch.tv/extra_streamer');
   await expect(page.getByText('Watching extra_streamer', { exact: true })).toBeVisible();
@@ -294,10 +295,13 @@ test('manual channel search fences old replies and preserves exact entry after s
 test('choosing a channel suggestion validates the timer before issuing a selection', async ({
   page,
 }) => {
-  await page.route('**/api/channels/search', (route) => route.fulfill({ json: found }));
+  await page.route('**/api/accounts/primary/channels/search', (route) =>
+    route.fulfill({ json: found }),
+  );
   const selections: unknown[] = [];
   page.on('request', (request) => {
-    if (request.url().endsWith('/api/channels/select')) selections.push(request.postDataJSON());
+    if (request.url().endsWith('/api/accounts/primary/channels/select'))
+      selections.push(request.postDataJSON());
   });
   await page.goto('/');
   await page.getByRole('button', { name: 'Mine channel', exact: true }).click();
@@ -330,7 +334,7 @@ for (const native of [true, false]) {
       });
     await page.setViewportSize({ width: 320, height: 740 });
     const queries: string[] = [];
-    await page.route('**/api/channels/search', (route) => {
+    await page.route('**/api/accounts/primary/channels/search', (route) => {
       queries.push(route.request().postDataJSON().search);
       return route.fulfill({
         json: Array.from({ length: 20 }, (_, index) => ({
@@ -395,7 +399,7 @@ test('closing a channel picker fences late search results and preserves failed s
   const gate = new Promise<void>((done) => {
     release = done;
   });
-  await page.route('**/api/channels/search', async (route) => {
+  await page.route('**/api/accounts/primary/channels/search', async (route) => {
     await gate;
     await route.fulfill({ json: found }).catch(() => {});
   });
@@ -404,7 +408,7 @@ test('closing a channel picker fences late search results and preserves failed s
   await entry.click();
   const popup = page.getByRole('dialog', { name: 'Mine channel' });
   const input = popup.getByRole('combobox');
-  const querying = page.waitForRequest('**/api/channels/search');
+  const querying = page.waitForRequest('**/api/accounts/primary/channels/search');
   await input.fill('missing');
   await querying;
   await input.press('Escape');
@@ -412,7 +416,7 @@ test('closing a channel picker fences late search results and preserves failed s
   await expect(popup).toBeHidden();
   await entry.click();
   await expect(input).toHaveValue('missing');
-  await page.route('**/api/channels/select', (route) =>
+  await page.route('**/api/accounts/primary/channels/select', (route) =>
     route.fulfill({ status: 503, json: { error: 'request_failed' } }),
   );
   await input.press('Enter');
@@ -429,7 +433,7 @@ test('closing a channel picker fences late search results and preserves failed s
   expect(await list.locator('.row').first().boundingBox()).toEqual(before);
   await page.keyboard.press('Escape');
   expect(await list.locator('.row').first().boundingBox()).toEqual(before);
-  await page.unroute('**/api/channels/select');
+  await page.unroute('**/api/accounts/primary/channels/select');
   await list.getByRole('button', { name: 'Watch Streamer 1', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
@@ -439,7 +443,7 @@ test('an accepted selection cannot close a reopened picker', async ({ page }) =>
   const gate = new Promise<void>((done) => {
     release = done;
   });
-  await page.route('**/api/channels/select', async (route) => {
+  await page.route('**/api/accounts/primary/channels/select', async (route) => {
     await gate;
     await route.continue();
   });
@@ -448,7 +452,7 @@ test('an accepted selection cannot close a reopened picker', async ({ page }) =>
   await entry.click();
   const popup = page.getByRole('dialog', { name: 'Mine channel' });
   const input = popup.getByRole('combobox');
-  const sent = page.waitForRequest('**/api/channels/select');
+  const sent = page.waitForRequest('**/api/accounts/primary/channels/select');
   await input.fill('extra_streamer');
   await input.press('Enter');
   await sent;
@@ -477,7 +481,7 @@ test('manual controls serialize HTTP commands but allow exiting an accepted pend
   const gate = new Promise<void>((done) => {
     release = done;
   });
-  await page.route('**/api/channels/select', async (route) => {
+  await page.route('**/api/accounts/primary/channels/select', async (route) => {
     await gate;
     await route.fulfill({ json: { ok: true } });
   });
@@ -485,7 +489,7 @@ test('manual controls serialize HTTP commands but allow exiting an accepted pend
   await entry.click();
   const input = page.getByRole('combobox', { name: 'Twitch channel name or URL' });
   await input.fill('extra_streamer');
-  const sent = page.waitForRequest('**/api/channels/select');
+  const sent = page.waitForRequest('**/api/accounts/primary/channels/select');
   await input.press('Enter');
   await sent;
   await expect(back).toBeDisabled();
@@ -511,7 +515,7 @@ test('manual controls serialize HTTP commands but allow exiting an accepted pend
   const rowGate = new Promise<void>((done) => {
     releaseRow = done;
   });
-  await page.route('**/api/channels/select', async (route) => {
+  await page.route('**/api/accounts/primary/channels/select', async (route) => {
     await rowGate;
     await route.continue();
   });

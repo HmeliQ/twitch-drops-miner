@@ -5,7 +5,11 @@ import fixture from './fixture.json' with { type: 'json' };
 import { newerUpdate, type UpdateStatus } from '../src/features/settings/DesktopUpdates';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 it('keeps completed update status when an earlier progress response arrives late', () => {
   const ready = { revision: 8, phase: 'ready' } as UpdateStatus;
@@ -87,4 +91,47 @@ it('does not let a closed subscription replace the remounted dashboard', async (
   await vi.waitFor(() => expect(second).toHaveBeenCalledTimes(1));
   expect(first).not.toHaveBeenCalled();
   current.close();
+});
+
+it('retains the requested account across native retries and cancels retry on close', async () => {
+  vi.stubGlobal('window', globalThis);
+  vi.useFakeTimers();
+  const receive = vi.fn();
+  vi.mocked(invoke).mockImplementation((command) =>
+    command === 'state_open' ? Promise.reject(new Error('temporary')) : Promise.resolve(),
+  );
+  const subscription = connectDesktop(receive, 'primary');
+  await vi.advanceTimersByTimeAsync(0);
+  expect(receive).toHaveBeenCalledWith({ type: 'disconnect' });
+  expect(invoke).toHaveBeenCalledWith(
+    'state_open',
+    expect.objectContaining({ account: 'primary' }),
+  );
+  await vi.advanceTimersByTimeAsync(999);
+  expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'state_open')).toHaveLength(
+    1,
+  );
+  await vi.advanceTimersByTimeAsync(1);
+  expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'state_open')).toHaveLength(
+    2,
+  );
+  subscription.close();
+  await vi.advanceTimersByTimeAsync(20_000);
+  expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'state_open')).toHaveLength(
+    2,
+  );
+});
+
+it('scopes native settings and history while keeping installation requests global', () => {
+  expect(nativeRequest('/api/accounts/primary/settings', { mining_paused: true }, 'POST')).toEqual({
+    kind: 'save_settings',
+    value: { mining_paused: true },
+    account: 'primary',
+  });
+  expect(nativeRequest('/api/accounts?instance=one&revision=2', undefined, 'GET')).toEqual({
+    kind: 'accounts',
+    value: { instance: 'one', revision: 2 },
+  });
+  expect(nativeRequest('/api/connection', undefined, 'GET')).toEqual({ kind: 'connection' });
+  expect(() => nativeRequest('/api/accounts?revision=NaN', undefined, 'GET')).toThrow();
 });

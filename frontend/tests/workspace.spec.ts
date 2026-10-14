@@ -294,7 +294,7 @@ test('short preferences with save conflicts and reconnects keep controls reachab
   });
   await page.setViewportSize({ width: 1024, height: 360 });
   await page.goto('/?edit=priorities');
-  await page.route('**/api/settings', async (route) => {
+  await page.route('**/api/accounts/primary/settings', async (route) => {
     if (route.request().method() === 'POST')
       await route.fulfill({ status: 409, json: { detail: 'settings_conflict' } });
     else await route.continue();
@@ -334,7 +334,7 @@ test('short preferences with save conflicts and reconnects keep controls reachab
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await page.screenshot({ path: '../artifacts/preferences-disconnected-short.png' });
   } finally {
-    await page.unroute('**/api/settings');
+    await page.unroute('**/api/accounts/primary/settings');
     await page.context().setOffline(false);
   }
   await expect(page.getByRole('combobox', { name: 'Mining priority' })).toBeEnabled();
@@ -346,7 +346,7 @@ test('short preferences with save conflicts and reconnects keep controls reachab
 
 test('leaving preferences preserves a conflicting draft for retry', async ({ page }) => {
   await page.goto('/?edit=priorities');
-  await page.route('**/api/settings', async (route) => {
+  await page.route('**/api/accounts/primary/settings', async (route) => {
     if (route.request().method() === 'POST') {
       await route.fulfill({ status: 409, json: { detail: 'settings_conflict' } });
     } else await route.continue();
@@ -364,7 +364,7 @@ test('leaving preferences preserves a conflicting draft for retry', async ({ pag
       .getByRole('group', { name: 'Allowed reward types', exact: true })
       .getByRole('checkbox', { name: 'Badges', exact: true }),
   ).not.toBeChecked();
-  await page.unroute('**/api/settings');
+  await page.unroute('**/api/accounts/primary/settings');
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
@@ -443,7 +443,7 @@ test('simplified captions and settings retain progress, recovery and refresh con
     let contentOffset: number | undefined;
     for (const section of ['account', 'access', 'connection', 'maintenance']) {
       await page.goto(`/settings#${section}`);
-      const content = page.locator(`#${section}`);
+      const content = page.locator(`#settings-${section}`);
       await expect(content).toBeVisible();
       await expect(content).toHaveCSS('border-bottom-width', '0px');
       await expect(
@@ -452,9 +452,7 @@ test('simplified captions and settings retain progress, recovery and refresh con
       const tabs = (await page
         .getByRole('navigation', { name: 'Settings sections' })
         .boundingBox())!;
-      await expect(content.getByRole('heading')).toHaveText(
-        section === 'account' ? ['Badges'] : [],
-      );
+      await expect(content.getByRole('heading')).toHaveText([]);
       const first = (await content.locator(':scope > :first-child').boundingBox())!;
       const offset = first.y - tabs.y - tabs.height;
       contentOffset ??= offset;
@@ -723,7 +721,7 @@ test('History details contain only recorded claims even with live campaign metad
       data: { campaigns: [campaign, { ...campaign, id: 'no-claims' }] },
     },
   });
-  await page.route('**/api/history', async (route) =>
+  await page.route('**/api/accounts/primary/history', async (route) =>
     route.fulfill({
       json: {
         ...(await (await route.fetch()).json()),
@@ -782,10 +780,14 @@ test('History details contain only recorded claims even with live campaign metad
   await expect(detail.getByText('Account linking has not been confirmed.')).toBeVisible();
   await expect(detail.getByRole('heading', { name: 'Trail companion' })).toBeVisible();
   for (const drop of ['missing', 'reward-2']) {
-    await page.route('**/api/history', (route) => route.fulfill({ status: 500, json: {} }), {
-      times: 1,
-    });
-    const failed = page.waitForResponse('**/api/history');
+    await page.route(
+      '**/api/accounts/primary/history',
+      (route) => route.fulfill({ status: 500, json: {} }),
+      {
+        times: 1,
+      },
+    );
+    const failed = page.waitForResponse('**/api/accounts/primary/history');
     await page.goto(`/campaigns?campaign=campaign-1&drop=${drop}`);
     expect((await failed).status()).toBe(500);
     if (drop === 'missing') {
@@ -812,14 +814,14 @@ test('History details stay claims-only while loading, retry errors and clear rec
     finishLoad = resolve;
   });
   await page.route(
-    '**/api/history',
+    '**/api/accounts/primary/history',
     async (route) => {
       await loading;
       await route.fulfill({ status: 500, json: {} });
     },
     { times: 1 },
   );
-  const started = page.waitForRequest('**/api/history');
+  const started = page.waitForRequest('**/api/accounts/primary/history');
   await page.goto('/campaigns?tab=history&campaign=campaign-1&drop=reward-1');
   await started;
   const detail = page.getByRole('complementary', { name: 'Campaign details' });
@@ -837,9 +839,13 @@ test('History details stay claims-only while loading, retry errors and clear rec
   await detail.getByRole('button', { name: 'Try again', exact: true }).click();
   await expect(detail.getByText('Canvas pack', { exact: true })).toBeVisible();
   await expect(detail.getByRole('status')).toHaveText('No recorded claim for this reward.');
-  await page.route('**/api/history', (route) => route.fulfill({ status: 500, json: {} }), {
-    times: 1,
-  });
+  await page.route(
+    '**/api/accounts/primary/history',
+    (route) => route.fulfill({ status: 500, json: {} }),
+    {
+      times: 1,
+    },
+  );
   await request.post('/__test/event', {
     headers,
     data: {
@@ -948,7 +954,7 @@ test('campaign grid aligns wrapped cards and gives narrow cards a separate actio
     headers,
     data: { event: 'inventory_batch_update', data: { campaigns } },
   });
-  await page.route('**/api/history', async (route) =>
+  await page.route('**/api/accounts/primary/history', async (route) =>
     route.fulfill({
       json: {
         ...(await (await route.fetch()).json()),
@@ -1018,7 +1024,7 @@ test('campaign cards retain shared artwork and dividers with compact mobile acti
     headers,
     data: { event: 'inventory_batch_update', data: { campaigns } },
   });
-  await page.route('**/api/history', async (route) =>
+  await page.route('**/api/accounts/primary/history', async (route) =>
     route.fulfill({
       json: {
         ...(await (await route.fetch()).json()),
@@ -1327,7 +1333,7 @@ test('short campaign workspaces keep controls and rewards reachable with long ti
   expect(bodyBounds.y + bodyBounds.height).toBeLessThanOrEqual(
     detailBounds.y + detailBounds.height,
   );
-  await page.route('**/api/settings', async (route) => {
+  await page.route('**/api/accounts/primary/settings', async (route) => {
     if (route.request().method() === 'POST')
       await route.fulfill({ status: 409, json: { detail: 'settings_conflict' } });
     else await route.continue();
@@ -1353,7 +1359,7 @@ test('short campaign workspaces keep controls and rewards reachable with long ti
     expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(360);
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   } finally {
-    await page.unroute('**/api/settings');
+    await page.unroute('**/api/accounts/primary/settings');
     await page.context().setOffline(false);
   }
 });
@@ -1459,7 +1465,7 @@ test('mobile campaign details lock background scrolling and restore the list', a
     headers,
     data: { event: 'inventory_batch_update', data: { campaigns } },
   });
-  await page.route('**/api/history', async (route) =>
+  await page.route('**/api/accounts/primary/history', async (route) =>
     route.fulfill({
       json: {
         ...(await (await route.fetch()).json()),
@@ -1609,7 +1615,7 @@ test('history-only reward links resolve and stale responses cannot restore a cle
   await expect(
     page.getByRole('button', { name: 'Open Autumn expedition', exact: true }),
   ).toBeVisible();
-  await page.route('**/api/history', (route) => route.fulfill({ json: saved }));
+  await page.route('**/api/accounts/primary/history', (route) => route.fulfill({ json: saved }));
   expect((await request.post('/api/cache/clear', { headers, data: {} })).ok()).toBeTruthy();
   await expect(
     page.getByRole('button', { name: 'Open Autumn expedition', exact: true }),
@@ -1638,15 +1644,16 @@ test('a missed publication resyncs stale mining state without losing an unsaved 
       } else socket.send(message);
     });
   });
-  await page.goto('/settings#connection');
+  await page.goto('/?edit=priorities');
   await expect.poll(() => upgraded).toBe(true);
-  await page.route('**/api/settings', (route) =>
+  await page.route('**/api/accounts/primary/settings', (route) =>
     route.request().method() === 'POST'
       ? route.fulfill({ status: 503, json: { detail: 'save_failed' } })
       : route.continue(),
   );
-  const interval = page.getByLabel('Minimum Refresh Interval (minutes):', { exact: true });
-  await interval.fill('45');
+  const allowed = page.getByRole('group', { name: 'Allowed reward types', exact: true });
+  const badges = allowed.getByRole('checkbox', { name: 'Badges', exact: true });
+  await badges.uncheck();
   await expect(page.getByRole('alert')).toContainText('Changes could not be saved');
   dropNextPatch = true;
   await request.post('/__test/event', {
@@ -1662,8 +1669,8 @@ test('a missed publication resyncs stale mining state without losing an unsaved 
     },
   });
   await expect.poll(() => resyncs).toBe(1);
-  await expect(interval).toBeEnabled();
-  await expect(interval).toHaveValue('45');
+  await expect(badges).toBeEnabled();
+  await expect(badges).not.toBeChecked();
   await page.getByRole('link', { name: 'Mining', exact: true }).click();
   await expect(
     page.getByRole('region', { name: 'Now mining' }).getByRole('progressbar'),
@@ -1674,14 +1681,11 @@ test('a missed publication resyncs stale mining state without losing an unsaved 
   await expect(page.locator('#channels-list')).not.toContainText('northwind');
   await expect(page.locator('#channels-list')).not.toContainText('harbor');
   await expect(page.getByRole('alert')).toContainText('Changes could not be saved');
-  await page.unroute('**/api/settings');
+  await page.unroute('**/api/accounts/primary/settings');
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
   await expect
-    .poll(
-      async () =>
-        (await (await request.get('/api/settings')).json()).minimum_refresh_interval_minutes,
-    )
-    .toBe(45);
+    .poll(async () => (await (await request.get('/api/settings')).json()).mining_benefits.BADGE)
+    .toBe(false);
 });
 
 test('Reload dashboard preserves real nested edits for review against newer settings', async ({
@@ -1691,7 +1695,7 @@ test('Reload dashboard preserves real nested edits for review against newer sett
   let upgraded = false;
   let connection!: WebSocketRoute;
   await page.routeWebSocket('**/socket.io/**', (socket) => {
-    connection = socket;
+    if (new URL(socket.url()).searchParams.get('account') === 'primary') connection = socket;
     const server = socket.connectToServer();
     socket.onMessage((message) => {
       if (message === '5') upgraded = true;
@@ -1701,7 +1705,7 @@ test('Reload dashboard preserves real nested edits for review against newer sett
   await page.goto('/?edit=priorities');
   await expect(page.getByRole('combobox', { name: 'Mining priority' })).toBeEnabled();
   await expect.poll(() => upgraded).toBe(true);
-  await page.route('**/api/settings', (route) =>
+  await page.route('**/api/accounts/primary/settings', (route) =>
     route.request().method() === 'POST'
       ? route.fulfill({ status: 503, json: { detail: 'save_failed' } })
       : route.continue(),
@@ -1717,7 +1721,7 @@ test('Reload dashboard preserves real nested edits for review against newer sett
   const reload = page.getByRole('button', { name: 'Reload dashboard', exact: true });
   await expect(reload).toBeVisible();
   await expect(page.getByRole('button', { name: 'Try again', exact: true })).toBeDisabled();
-  await page.unroute('**/api/settings');
+  await page.unroute('**/api/accounts/primary/settings');
   page.once('dialog', (dialog) => dialog.accept());
   await Promise.all([page.waitForEvent('load'), reload.click()]);
   await expect(page.getByRole('alert')).toContainText('Your unsaved edits were restored');
@@ -1732,7 +1736,6 @@ test('Reload dashboard preserves real nested edits for review against newer sett
           revision: before.revision,
           mining_benefits: { EMOTE: false },
           inventory_filters: { show_benefit_emote: false },
-          connection_quality: 5,
         },
       })
     ).ok(),
@@ -1753,7 +1756,7 @@ test('Reload dashboard preserves real nested edits for review against newer sett
     show_benefit_emote: false,
   });
   expect(saved.mining_benefits).toEqual({ ...before.mining_benefits, BADGE: false, EMOTE: false });
-  expect(saved.connection_quality).toBe(5);
+  expect(saved.connection_quality).toBe(before.connection_quality);
   expect(saved.games_to_watch).toEqual(before.games_to_watch);
   await page.reload();
   await expect(page.getByRole('combobox', { name: 'Mining priority' })).toBeEnabled();

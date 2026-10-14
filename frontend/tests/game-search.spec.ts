@@ -21,7 +21,7 @@ for (const viewport of [
       id: `${index}`,
       name: `Search result ${index + 1}`,
     }));
-    await page.route('**/api/games', (route) =>
+    await page.route('**/api/accounts/primary/games', (route) =>
       route.fulfill({
         json: route.request().postDataJSON().search ? games : [],
       }),
@@ -79,7 +79,7 @@ test('keyboard selection stays on the input and cannot select an old query', asy
   page,
   request,
 }) => {
-  await page.route('**/api/games', (route) =>
+  await page.route('**/api/accounts/primary/games', (route) =>
     route.fulfill({
       json: route.request().postDataJSON().search
         ? [stardew, { ...stardew, id: '2', name: 'Starbound' }]
@@ -119,7 +119,7 @@ test('keyboard selection stays on the input and cannot select an old query', asy
 test('dismissed pending searches stay closed when the result arrives', async ({ page }) => {
   let finish!: () => void;
   const gate = new Promise<void>((resolve) => (finish = resolve));
-  await page.route('**/api/games', async (route) => {
+  await page.route('**/api/accounts/primary/games', async (route) => {
     if (route.request().postDataJSON().search) await gate;
     await route.fulfill({ json: [stardew] });
   });
@@ -143,13 +143,13 @@ test('suggestions follow the field when an autosave error shifts the page', asyn
   let finish!: () => void;
   let saving = false;
   const gate = new Promise<void>((resolve) => (finish = resolve));
-  await page.route('**/api/settings', async (route) => {
+  await page.route('**/api/accounts/primary/settings', async (route) => {
     if (route.request().method() !== 'POST') return route.continue();
     saving = true;
     await gate;
     await route.fulfill({ status: 409, json: { detail: 'settings_conflict' } });
   });
-  await page.route('**/api/games', (route) =>
+  await page.route('**/api/accounts/primary/games', (route) =>
     route.fulfill({ json: route.request().postDataJSON().search ? [stardew] : [] }),
   );
   await page.goto('/?edit=priorities');
@@ -185,7 +185,9 @@ test('suggestions follow the field when an autosave error shifts the page', asyn
 test.describe('touch game selection', () => {
   test.use({ hasTouch: true, viewport: { width: 390, height: 844 } });
   test('a tap selects a game and closes suggestions', async ({ page }) => {
-    await page.route('**/api/games', (route) => route.fulfill({ json: [stardew] }));
+    await page.route('**/api/accounts/primary/games', (route) =>
+      route.fulfill({ json: [stardew] }),
+    );
     await page.goto('/?edit=priorities');
     await page.getByRole('combobox', { name: 'Search games' }).fill('stardew');
     await page.getByRole('option', { name: stardew.name }).tap();
@@ -199,7 +201,7 @@ test('older webviews can search, dismiss and select without the Popover API', as
     delete (HTMLElement.prototype as Partial<HTMLElement>).showPopover;
     delete (HTMLElement.prototype as Partial<HTMLElement>).hidePopover;
   });
-  await page.route('**/api/games', (route) =>
+  await page.route('**/api/accounts/primary/games', (route) =>
     route.request().postDataJSON().search === 'fail'
       ? route.fulfill({ status: 503, json: { detail: 'request_failed' } })
       : route.fulfill({ json: [stardew] }),
@@ -246,7 +248,7 @@ test('search adds a game without campaigns and persists its official name and co
   request,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.route('**/api/games', (route) =>
+  await page.route('**/api/accounts/primary/games', (route) =>
     route.fulfill({ json: route.request().postDataJSON().search ? [stardew] : [] }),
   );
   await page.goto('/?edit=priorities');
@@ -287,7 +289,7 @@ test('old Unicode saved names gain covers without a campaign and retain their pr
       })
     ).ok(),
   ).toBeTruthy();
-  await page.route('**/api/games', (route) => route.fulfill({ json: [metadata] }));
+  await page.route('**/api/accounts/primary/games', (route) => route.fulfill({ json: [metadata] }));
   await page.goto('/?edit=priorities');
   await expect(page.locator('[data-game="STRASSE"] img')).toHaveAttribute(
     'src',
@@ -306,7 +308,7 @@ test('changed queries ignore stale results and failed searches can retry or add 
   page,
 }) => {
   let finishSlow: (() => void) | undefined;
-  await page.route('**/api/games', async (route) => {
+  await page.route('**/api/accounts/primary/games', async (route) => {
     const query = route.request().postDataJSON();
     if (query.names) return route.fulfill({ json: [] });
     if (query.search === 'slow') {
@@ -342,8 +344,8 @@ test('changed queries ignore stale results and failed searches can retry or add 
   await expect(
     page.getByText('Twitch search is unavailable. You can still add a name.'),
   ).toBeVisible();
-  await page.unroute('**/api/games');
-  await page.route('**/api/games', (route) => route.fulfill({ json: [stardew] }));
+  await page.unroute('**/api/accounts/primary/games');
+  await page.route('**/api/accounts/primary/games', (route) => route.fulfill({ json: [stardew] }));
   const retry = page.getByRole('button', { name: 'Try again', exact: true });
   await retry.focus();
   await retry.press('Enter');
@@ -358,7 +360,7 @@ test('early campaign selections get covers and Enter accepts Twitch word matches
   let releaseSearch: (() => void) | undefined;
   const elder = { ...stardew, id: '65654', name: 'The Elder Scrolls Online' };
   const warcraft = { ...stardew, id: '18122', name: 'World of Warcraft' };
-  await page.route('**/api/games', async (route) => {
+  await page.route('**/api/accounts/primary/games', async (route) => {
     const query = route.request().postDataJSON();
     if (query.names)
       return route.fulfill({ json: query.names.includes(elder.name) ? [elder] : [] });

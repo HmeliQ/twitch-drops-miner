@@ -52,11 +52,15 @@ for (const viewport of [
     await page.setViewportSize(viewport);
     if (viewport.width >= 1024) {
       await page.goto('/');
-      const link = page.locator('aside').getByRole('link', { name: 'Twitch account: Northwind' });
+      const link = page
+        .locator('aside')
+        .getByRole('button', { name: 'Switch account', exact: true })
+        .filter({ visible: true });
       await expect(link).toBeVisible();
       const avatar = link.locator('img').first();
       const badge = link.getByRole('img', { name: 'Event badge', exact: true });
       const name = link.getByText('Northwind', { exact: true });
+      await expect(avatar).toBeVisible();
       const avatarBox = (await avatar.boundingBox())!;
       const github = (await page
         .getByRole('link', { name: 'GitHub repository' })
@@ -73,11 +77,13 @@ for (const viewport of [
         .screenshot({ path: `../artifacts/account-sidebar-${viewport.width}.png` });
       await link.focus();
       await link.press('Enter');
+      await page.getByRole('link', { name: 'Manage accounts', exact: true }).click();
     } else {
       await page.goto('/settings#account');
     }
     await expect(page).toHaveURL(/\/settings#account$/);
-    const settings = page.locator('#account');
+    const settings = page.locator('#settings-account');
+    await settings.locator('summary').click();
     const identity = settings.locator('.account-identity');
     await expect(identity.getByText('Northwind', { exact: true })).toBeVisible();
     await expect(identity.getByRole('img', { name: 'Event badge', exact: true })).toBeVisible();
@@ -89,13 +95,8 @@ for (const viewport of [
     await expect(profileLink).toHaveAttribute('href', 'https://www.twitch.tv/northwind_login');
     await expect(profileLink).toHaveAttribute('target', '_blank');
     await expect(profileLink).toHaveAttribute('rel', 'noreferrer');
-    const logout = settings.getByRole('button', { name: 'Log out of Twitch', exact: true });
-    const linkBox = (await profileLink.boundingBox())!;
-    const logoutBox = (await logout.boundingBox())!;
-    expect(linkBox.y).toBe(logoutBox.y);
-    expect(linkBox.height).toBe(logoutBox.height);
-    expect(linkBox.x + linkBox.width).toBeLessThanOrEqual(logoutBox.x);
-    if (viewport.width < 768) expect(linkBox.height).toBeGreaterThanOrEqual(44);
+    if (viewport.width < 768)
+      expect((await profileLink.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     if (viewport.width === 1440) {
       await page
         .context()
@@ -142,7 +143,8 @@ test('account settings handle missing and empty badge collections, broken art, a
     });
   await publish({ ...fixture.login, profile: { ...profile, available_badges: null } });
   await page.goto('/settings#account');
-  const settings = page.locator('#account');
+  const settings = page.locator('#settings-account');
+  await settings.locator('summary').click();
   const badges = settings.getByRole('region', { name: 'Badges', exact: true });
   await expect(settings).toContainText('Full badge collection unavailable.');
   await expect(badges.getByRole('button')).toHaveCount(1);
@@ -172,9 +174,14 @@ test('account settings handle missing and empty badge collections, broken art, a
   );
   await expect(settings).toContainText('No badges available.');
   await expect(settings).not.toContainText('Full badge collection unavailable.');
-  await page.getByRole('button', { name: 'Log out of Twitch', exact: true }).click();
+  await page.getByRole('button', { name: 'Actions for Other account', exact: true }).click();
+  const actions = page.getByRole('dialog', { name: 'Other account', exact: true });
+  await actions.getByRole('button', { name: 'Log out of Twitch', exact: true }).click();
+  await actions.getByRole('button', { name: 'Log out of Twitch', exact: true }).click();
   await expect(settings.locator('.account-identity')).toHaveCount(0);
   await expect(settings.getByRole('link', { name: 'Open Twitch profile' })).toHaveCount(0);
   await expect(badges).toHaveCount(0);
-  await expect(page.locator('.account-trigger')).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Switch account', exact: true }).filter({ visible: true }),
+  ).toBeVisible();
 });

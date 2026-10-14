@@ -1,9 +1,10 @@
+import { Link } from '../../app/accountNavigation';
 import { CampaignDetail } from './CampaignDetail';
 import FilterPopover from './FilterPopover';
 import { displayFilters, writeFilters } from './query';
 import { Icon } from '@mdi/react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
+import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import {
   mdiFilterOutline,
   mdiGamepadVariantOutline,
@@ -19,6 +20,7 @@ import {
   mdiGiftOutline,
   mdiHistory,
 } from '@mdi/js';
+import { useAccountState } from '../../app/accounts';
 import { useMiner } from '../../app/MinerProvider';
 import { InventoryRefreshButton } from '../../shared/ui/InventoryRefreshButton';
 import { useT } from '../../shared/lib/i18n';
@@ -132,7 +134,7 @@ export default function Campaigns() {
     }
   }, [detailId, hydrated, list]);
   const [popover, setPopover] = useState<'games' | 'filters' | null>(null);
-  const [gameSearch, setGameSearch] = useState('');
+  const [gameSearch, setGameSearch] = useAccountState('campaigns.gameSearch', '');
   const [filterDraft, setFilterDraft] = useState<{ key: string; filters: Filters } | null>(null);
   const historyTab = ['history', 'finished'].includes(params.get('tab') ?? '');
   useEffect(() => setPopover(null), [historyTab, detailId]);

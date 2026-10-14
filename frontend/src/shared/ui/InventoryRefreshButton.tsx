@@ -2,11 +2,10 @@ import { useEffect, useState } from 'react';
 import { mdiRefresh, mdiCheck, mdiAlertCircleOutline } from '@mdi/js';
 import { useMiner } from '../../app/MinerProvider';
 import { useT } from '../lib/i18n';
-import { request } from '../lib/api';
 import { IconButton, dateTime, useAction } from './index';
 
 export function InventoryRefreshButton() {
-  const { data, connected } = useMiner();
+  const { data, connected, request } = useMiner();
   const t = useT();
   const action = useAction();
   const refresh = data?.inventory_refresh;

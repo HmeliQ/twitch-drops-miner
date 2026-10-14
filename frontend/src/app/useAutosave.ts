@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ApiError, request } from '../shared/lib/api';
 import type { Filters, Settings } from '../shared/lib/types';
 
@@ -32,9 +32,9 @@ export function remainingChanges(queued: Changes, sent: Changes): Changes {
   }
   return next;
 }
-function readReloadDraft(): { changes: Changes; revision?: string } | null {
+function readReloadDraft(key: string): { changes: Changes; revision?: string } | null {
   try {
-    const raw = sessionStorage.getItem(reloadKey);
+    const raw = sessionStorage.getItem(key);
     if (!raw || raw.length > 100_000) return null;
     const value = JSON.parse(raw);
     if (
@@ -50,27 +50,103 @@ function readReloadDraft(): { changes: Changes; revision?: string } | null {
     return null;
   }
 }
+
+function createDraft(key: string, settings?: Settings) {
+  const restored = readReloadDraft(key);
+  const record = {
+    invalidated: false,
+    queued: { current: restored?.changes ?? ({} as Changes) },
+    baseline: { current: (restored ?? settings) as { revision?: string } | undefined },
+    latest: { current: settings },
+    sending: { current: false },
+    restored: !!restored,
+    error: restored ? 'settings_restored' : '',
+    version: 0,
+    listeners: new Set<() => void>(),
+    persist() {
+      if (record.invalidated) return;
+      try {
+        if (Object.keys(record.queued.current).length)
+          sessionStorage.setItem(
+            key,
+            JSON.stringify({
+              changes: record.queued.current,
+              revision: record.baseline.current?.revision,
+              expires: Date.now() + 600_000,
+            }),
+          );
+        else sessionStorage.removeItem(key);
+      } catch {
+        /* In-memory drafts still survive account switches. */
+      }
+    },
+    emit() {
+      if (record.invalidated) return;
+      record.persist();
+      record.version++;
+      for (const listener of record.listeners) listener();
+    },
+    subscribe(listener: () => void) {
+      record.listeners.add(listener);
+      return () => {
+        record.listeners.delete(listener);
+      };
+    },
+    snapshot() {
+      return record.version;
+    },
+  };
+  return record;
+}
+const drafts = new Map<string, ReturnType<typeof createDraft>>();
+export function clearAutosaveDrafts() {
+  for (const draft of drafts.values()) draft.invalidated = true;
+  drafts.clear();
+  try {
+    for (const key of Object.keys(sessionStorage))
+      if (key === reloadKey || key.startsWith(`${reloadKey}.`)) sessionStorage.removeItem(key);
+  } catch {
+    /* Browser storage may be unavailable. */
+  }
+}
+export const hasUnsavedDrafts = () =>
+  [...drafts.values()].some(
+    (draft) => draft.sending.current || Object.keys(draft.queued.current).length > 0,
+  );
+
 export function useAutosave(
   settings: Settings | undefined,
   connected: boolean,
   saved: (settings: Settings, previousRevision: string | undefined) => void,
+  scopedRequest: typeof request = request,
+  accountId?: string,
 ) {
-  const [restored] = useState(readReloadDraft);
-  useEffect(() => {
-    try {
-      sessionStorage.removeItem(reloadKey);
-    } catch {
-      /* Storage can be disabled. */
+  const key = accountId ? `${reloadKey}.${accountId}` : reloadKey;
+  const [record] = useState(() => {
+    if (!accountId) return createDraft(key, settings);
+    if (!drafts.has(accountId)) drafts.set(accountId, createDraft(key, settings));
+    return drafts.get(accountId)!;
+  });
+  useSyncExternalStore(record.subscribe, record.snapshot, record.snapshot);
+  const { latest, queued, baseline, sending, restored } = record;
+  if (settings) latest.current = settings;
+  const changes = queued.current;
+  const busy = sending.current;
+  const error = record.error;
+  const setChanges = (changes: Changes) => {
+    queued.current = changes;
+    record.emit();
+  };
+  const setBusy = (busy: boolean) => {
+    sending.current = busy;
+    record.emit();
+  };
+  const setError = (error: string) => {
+    if (record.error !== error) {
+      record.error = error;
+      record.emit();
     }
-  }, []);
-  const latest = useRef(settings);
-  latest.current = settings;
-  const queued = useRef<Changes>(restored?.changes ?? {});
-  const baseline = useRef<{ revision?: string } | undefined>(restored ?? settings);
-  const sending = useRef(false);
-  const [changes, setChanges] = useState<Changes>(restored?.changes ?? {});
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(restored ? 'settings_restored' : '');
+  };
   const pending = Object.keys(changes).length > 0;
 
   function change<K extends keyof Changes>(
@@ -102,7 +178,7 @@ export function useAutosave(
   }
 
   async function save(refresh = false) {
-    if (sending.current || !latest.current || !connected) return;
+    if (record.invalidated || sending.current || !latest.current || !connected) return;
     const sent = queued.current;
     if (!Object.keys(sent).length) return;
     if (
@@ -120,9 +196,9 @@ export function useAutosave(
     setError('');
     try {
       const base = refresh
-        ? await request<Settings>('/api/settings')
+        ? await scopedRequest<Settings>('/api/settings')
         : (baseline.current ?? latest.current);
-      const result = await request<{ settings: Settings }>('/api/settings', {
+      const result = await scopedRequest<{ settings: Settings }>('/api/settings', {
         ...sent,
         revision: base.revision,
       });
@@ -158,6 +234,15 @@ export function useAutosave(
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [pending, busy]);
+  const flush = useRef(save);
+  flush.current = save;
+  useEffect(
+    () => () => {
+      record.persist();
+      void flush.current();
+    },
+    [record],
+  );
   return {
     draft: settings ? mergeDraft(settings, changes) : undefined,
     change,
@@ -169,7 +254,7 @@ export function useAutosave(
       try {
         if (Object.keys(queued.current).length)
           sessionStorage.setItem(
-            reloadKey,
+            key,
             JSON.stringify({
               changes: queued.current,
               revision: baseline.current?.revision,

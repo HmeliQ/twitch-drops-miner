@@ -54,7 +54,7 @@ for (const width of [1440, 390]) {
       },
     });
     const saved = await (await request.get('/api/history')).json();
-    await page.route('**/api/history', async (route) =>
+    await page.route('**/api/accounts/primary/history', async (route) =>
       route.fulfill({
         json: {
           ...saved,

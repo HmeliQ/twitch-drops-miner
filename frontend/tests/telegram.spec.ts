@@ -139,6 +139,11 @@ test('Telegram reports a configuration conflict without overwriting another clie
 }) => {
   const headers = { 'X-TDM-Request': '1' };
   await request.post('/__test/reset', { headers, data: {} });
+  const initial = await (await request.get('/api/telegram')).json();
+  await request.post('/api/telegram', {
+    headers,
+    data: { revision: initial.revision, remove: true },
+  });
   await page.goto('/settings#notifications');
   await expect(page.getByLabel('Chat ID', { exact: true })).toBeVisible();
   const saved = await (await request.get('/api/telegram')).json();

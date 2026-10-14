@@ -38,7 +38,7 @@ for (const width of [1440, 390, 320]) {
 
 test('failed pause saves keep the running state visible and can be retried', async ({ page }) => {
   await page.goto('/');
-  await page.route('**/api/settings', async (route) => {
+  await page.route('**/api/accounts/primary/settings', async (route) => {
     if (route.request().method() === 'POST')
       await route.fulfill({ status: 500, json: { error: 'request_failed' } });
     else await route.continue();
@@ -47,7 +47,7 @@ test('failed pause saves keep the running state visible and can be retried', asy
   await expect(page.getByRole('button', { name: 'Try again', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Now mining', exact: true })).toBeVisible();
   await expect(page).toHaveTitle('70% Rust - Drops Miner');
-  await page.unroute('**/api/settings');
+  await page.unroute('**/api/accounts/primary/settings');
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Paused', exact: true })).toBeVisible();
 });

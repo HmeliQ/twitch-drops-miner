@@ -1,5 +1,14 @@
 import { isDesktop } from '../shared/lib/platform';
-import { createContext, useContext, useEffect, useReducer, useRef, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  type ReactNode,
+} from 'react';
+import { accountRequest } from './accounts';
 import type { Snapshot } from '../shared/lib/types';
 import { connectBrowser, type Subscription } from './transport';
 import { I18n } from '../shared/lib/i18n';
@@ -12,12 +21,16 @@ export function upsert<T extends { id: string | number }>(items: T[], item: T): 
     : [...items, item];
 }
 const Context = createContext<{
+  request: ReturnType<typeof accountRequest>;
+  accountId: string | null;
   data: Snapshot | null;
   connected: boolean;
   incompatible: boolean;
   historyRevision: number;
   autosave: ReturnType<typeof useAutosave>;
 }>({
+  request: accountRequest(null),
+  accountId: null,
   data: null,
   connected: false,
   incompatible: false,
@@ -25,23 +38,46 @@ const Context = createContext<{
   autosave: null as unknown as ReturnType<typeof useAutosave>,
 });
 
-export function MinerProvider({ children }: { children: ReactNode }) {
+export function MinerProvider({
+  children,
+  accountId,
+  available,
+}: {
+  children: ReactNode;
+  accountId: string | null;
+  available: boolean;
+}) {
+  const request = useMemo(() => accountRequest(accountId), [accountId]);
   const [state, dispatch] = useReducer(reducer, initialState);
   const transport = useRef<Subscription | null>(null);
-  const autosave = useAutosave(state.data?.settings, state.hydrated, (settings, revision) => {
-    dispatch({ type: 'settings', settings, revision });
-  });
+  const autosave = useAutosave(
+    state.data?.settings,
+    state.hydrated,
+    (settings, revision) => {
+      dispatch({ type: 'settings', settings, revision });
+    },
+    request,
+    accountId ?? 'none',
+  );
   useEffect(() => {
     if (state.resync) transport.current?.resync();
   }, [state.resync]);
   useEffect(() => {
     let disposed = false;
     const start = async () => {
+      if (!accountId || !available) return;
       const connect = isDesktop()
         ? (await import('../shared/lib/desktop')).connectDesktop
         : connectBrowser;
       if (disposed) return;
-      transport.current = connect(dispatch);
+      transport.current = connect((action) => {
+        if (
+          (action.type === 'snapshot' || action.type === 'patch') &&
+          action.value.account_id !== accountId
+        )
+          return;
+        dispatch(action);
+      }, accountId);
     };
     void start();
     return () => {
@@ -49,10 +85,12 @@ export function MinerProvider({ children }: { children: ReactNode }) {
       transport.current?.close();
       transport.current = null;
     };
-  }, []);
+  }, [accountId, available]);
   return (
     <Context
       value={{
+        request,
+        accountId,
         data: state.data,
         connected: state.hydrated,
         incompatible: state.incompatible,

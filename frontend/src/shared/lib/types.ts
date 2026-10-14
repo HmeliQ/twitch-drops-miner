@@ -190,6 +190,7 @@ export interface InventoryRefresh {
   error: string | null;
 }
 export interface Snapshot {
+  account_id?: string;
   mining?: {
     state:
       | 'unknown'
@@ -327,6 +328,7 @@ export interface ActivityEvent {
   recovered: boolean;
 }
 export interface StatePatch {
+  account_id?: string;
   protocol: number;
   instance: string;
   base_revision: number;

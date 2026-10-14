@@ -37,7 +37,9 @@ export default function AccountIdentity({
           <Icon path={mdiAccountOutline} className="size-5" />
         </span>
       )}
-      <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+      <span
+        className={`flex min-w-0 items-center gap-x-1.5 gap-y-1 ${compact ? 'flex-nowrap' : 'flex-wrap'}`}
+      >
         {compact && badges}
         <span
           className="truncate font-semibold"
