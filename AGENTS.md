@@ -160,6 +160,8 @@ embed it and run without a build tool/runtime companion. Production builds never
   credentials stay in memory until Finish, expire after ten minutes and never enter public
   snapshots. No mining or claiming starts before Finish. Reauthentication cannot change the
   bound Twitch user. Signed-out managed profiles wait without starting hidden login flows.
+  Sign-out/removal invalidates targeted onboarding; Connection changes cancel pending onboarding
+  with retry feedback. Old verification results cannot restore a removed account.
 - Every account HTTP/IPC request and full-state subscription has an explicit profile ID.
   Legacy unscoped requests work only with one visible account. No mutable server-wide viewed
   account exists. Snapshots/patches carry account and process identities; old subscriptions and
@@ -167,7 +169,9 @@ embed it and run without a build tool/runtime companion. Production builds never
   data only. Global auth, Connection, Telegram and shutdown routes remain separate.
 - `connection.json` owns proxy, quality and inventory refresh interval for the installation,
   including Telegram's proxy. Per-account settings expose the effective values for compatibility
-  but cannot change them. Save shared values atomically before fanout; inject them on restart.
+  but cannot change them. Persist validated legacy Connection values once on first load, preserving
+  the original settings. Save shared values atomically before fanout; inject them on restart.
+  Unreadable primary settings remain isolated when the shared configuration is available.
   A shared public catalog cache coalesces downloads for 30 seconds (five seconds for failure),
   while account parsing and evidence stay separate. Shared HTTP scheduling reserves capacity
   for beacons, progress, playback tokens and claims separately from discovery. Never share
@@ -181,9 +185,15 @@ embed it and run without a build tool/runtime companion. Production builds never
   selections require a fresh issued nonce, matching private owner and bot identity and a valid
   current profile. Configuration changes/restarts discard them. Multi-account replies and
   claim notifications name the account. Account logout fences only that account's deliveries.
+- The account switcher lives in the existing sidebar/compact header; management is in Settings >
+  Accounts. Preserve per-account routes, filters, scroll, drafts and Up next disclosures. Keep IDs
+  in multi-account navigation/deep links. Global Connection/Telegram drafts and in-flight saves
+  survive switching; dashboard logout clears private drafts. Suspend unavailable subscriptions,
+  fence old publications and reconnect with bounded backoff after recovery.
 - Desktop tray actions distinguish the viewed account from all accounts and capture revisions.
   Keep-awake is installation-wide: any connected, unpaused, actively watching account may hold
-  the single owned guard. Quit, restart and installation drain all accounts.
+  the single owned guard. Closing the current native subscription clears viewed tray selection.
+  Quit, restart and installation drain all accounts.
 
 ## Mining contracts
 
@@ -329,7 +339,7 @@ embed it and run without a build tool/runtime companion. Production builds never
   Estimates alone never imply completion or a claim.
 - Claims require account-issued instance IDs, skip upcoming campaigns and stop at the strict
   campaign-end + 24-hour deadline. Earned claims are independent of mining/ignore selection.
-  Global `auto_claim_drops` defaults true, including existing settings. When false, continue
+  Per-account `auto_claim_drops` defaults true, including existing settings. When false, continue
   watching, inventory imports and confirmed receipt recovery, but do not start claim mutations
   or replay unconfirmed journal intents. Leave Twitch drop reminders in place while disabled.
   Recheck the saved setting after intent persistence; an already-started claim may finish
