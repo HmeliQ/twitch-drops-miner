@@ -124,6 +124,7 @@ impl Error {
 
 #[derive(Clone)]
 pub struct Claim {
+    pub cancel: CancellationToken,
     pub account: u64,
     pub drop_id: String,
     pub game: String,
@@ -156,10 +157,11 @@ fn html(value: &str) -> String {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum MessageKind {
+enum MessageKind<'a> {
     Claim,
     Test,
     Reply,
+    Keyboard(&'a serde_json::Value),
 }
 
 struct State {
@@ -420,7 +422,7 @@ impl Telegram {
         html: &str,
         proxy: &str,
         shutdown: &CancellationToken,
-        kind: MessageKind,
+        kind: MessageKind<'_>,
         image: Option<&str>,
     ) -> Result<(), Error> {
         if self.delivery.is_closed() {
@@ -436,7 +438,7 @@ impl Telegram {
             }
             if !match kind {
                 MessageKind::Claim => state.config.enabled,
-                MessageKind::Reply => state.config.remote_control,
+                MessageKind::Reply | MessageKind::Keyboard(_) => state.config.remote_control,
                 MessageKind::Test => state.config.enabled || state.config.remote_control,
             } {
                 return Err(Error::Disabled);
@@ -461,10 +463,16 @@ impl Telegram {
             for attempt in 0..2 {
                 self.state.lock().unwrap().next_send = Instant::now() + Duration::from_secs(3);
                 // The token is in the URL: never format reqwest errors or response bodies.
-                let response = client.post(format!("{}/bot{}/sendMessage", self.endpoint, config.token))
-                    .json(&serde_json::json!({"chat_id":config.chat_id, "text": html, "parse_mode":"HTML",
-                        "link_preview_options":preview}))
-                    .send().await.map_err(|_| Error::Delivery)?;
+                let mut body = serde_json::json!({"chat_id":config.chat_id, "text": html, "parse_mode":"HTML", "link_preview_options":preview});
+                if let MessageKind::Keyboard(markup) = kind {
+                    body["reply_markup"] = markup.clone();
+                }
+                let response = client
+                    .post(format!("{}/bot{}/sendMessage", self.endpoint, config.token))
+                    .json(&body)
+                    .send()
+                    .await
+                    .map_err(|_| Error::Delivery)?;
                 let status = response.status().as_u16();
                 if status == 401 {
                     return Err(Error::Token);
@@ -509,8 +517,8 @@ async fn response_json(mut response: reqwest::Response) -> Result<serde_json::Va
 
 impl Application {
     pub async fn telegram_bot(&self) -> BotView {
-        let proxy = self.settings.read().await.proxy.clone();
-        self.telegram.bot(&proxy, &self.shutdown).await
+        let proxy = self.connection_proxy().await;
+        self.telegram.bot(&proxy, &self.process_cancel()).await
     }
 
     pub async fn save_telegram(
@@ -525,9 +533,9 @@ impl Application {
             .await
             .map_err(|_| Error::Storage)?;
         let app = self.clone();
-        self.writes
+        self.global_writes()
             .spawn(async move {
-                if app.shutdown.is_cancelled() {
+                if app.process_cancel().is_cancelled() {
                     return Err(super::app::AppError::ShuttingDown);
                 }
                 tokio::task::spawn_blocking(move || {
@@ -543,14 +551,14 @@ impl Application {
     }
 
     pub async fn test_telegram(&self) -> Result<(), super::app::AppError> {
-        let proxy = self.settings.read().await.proxy.clone();
+        let proxy = self.connection_proxy().await;
         let result = self
             .telegram
             .send(
                 self.telegram.epoch(),
                 "Drops Miner\nTest message",
                 &proxy,
-                &self.shutdown,
+                &self.process_cancel(),
                 MessageKind::Test,
                 None,
             )
@@ -568,9 +576,10 @@ pub async fn run(app: Arc<Application>, events: broadcast::Receiver<Notification
 
 async fn run_claims(app: Arc<Application>, mut events: broadcast::Receiver<Notification>) {
     let mut seen = VecDeque::new();
+    let shutdown = app.process_cancel();
     loop {
         let event = tokio::select! { biased;
-            _ = app.shutdown.cancelled() => break,
+            _ = shutdown.cancelled() => break,
             event = events.recv() => event,
         };
         let claim = match event {
@@ -580,9 +589,18 @@ async fn run_claims(app: Arc<Application>, mut events: broadcast::Receiver<Notif
             Err(broadcast::error::RecvError::Closed) => break,
             _ => continue,
         };
-        if claim.epoch != app.telegram.epoch()
+        let owner = if let Some(accounts) = app.accounts() {
+            let Ok(owner) = accounts.account_for_user(claim.account).await else {
+                continue;
+            };
+            owner
+        } else {
+            app.clone()
+        };
+        if claim.cancel.is_cancelled()
+            || claim.epoch != app.telegram.epoch()
             || !app.telegram.view().enabled
-            || app.snapshot.read().await.login.user_id != Some(claim.account)
+            || owner.snapshot.read().await.login.user_id != Some(claim.account)
         {
             continue;
         }
@@ -594,19 +612,33 @@ async fn run_claims(app: Arc<Application>, mut events: broadcast::Receiver<Notif
         if seen.len() > 1024 {
             seen.pop_front();
         }
-        let proxy = app.settings.read().await.proxy.clone();
-        let text = claim.message();
-        let result = app
+        let proxy = app.connection_proxy().await;
+        let mut text = claim.message();
+        if let Some(accounts) = app.accounts() {
+            let overview = accounts.overview().await;
+            if overview.accounts.len() > 1
+                && let Some(account) = overview
+                    .accounts
+                    .iter()
+                    .find(|a| a.user_id == Some(claim.account))
+            {
+                text = format!("{}\n{text}", html(&account.name));
+            }
+        }
+        let result = tokio::select! { biased;
+            _ = claim.cancel.cancelled() => Err(Error::Cancelled),
+            result = app
             .telegram
             .send(
                 claim.epoch,
                 &text,
                 &proxy,
-                &app.shutdown,
+                &shutdown,
                 MessageKind::Claim,
                 Some(&claim.image_url),
             )
-            .await;
+            => result,
+        };
         report(&app, result).await;
     }
 }

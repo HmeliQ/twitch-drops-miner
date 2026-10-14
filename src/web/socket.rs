@@ -14,6 +14,7 @@ use super::{App, Command};
 
 #[derive(Clone)]
 struct SocketSession {
+    account: Option<Arc<crate::app::Application>>,
     token: String,
     cancelled: CancellationToken,
     resync: Arc<Notify>,
@@ -51,6 +52,29 @@ impl SocketHub {
     }
 
     async fn connected(&self, socket: SocketRef, app: &Arc<App>) {
+        let account_id = url::form_urlencoded::parse(
+            socket
+                .req_parts()
+                .uri
+                .query()
+                .unwrap_or_default()
+                .as_bytes(),
+        )
+        .find_map(|(key, value)| (key == "account").then(|| value.into_owned()));
+        if account_id.as_deref() == Some("overview") {
+            self.connected_overview(socket, app).await;
+            return;
+        }
+        let account = match match account_id {
+            Some(id) => app.accounts.account(&id).await,
+            None => app.accounts.sole_account().await,
+        } {
+            Ok(account) => account,
+            Err(_) => {
+                let _ = socket.disconnect();
+                return;
+            }
+        };
         let protocol = url::form_urlencoded::parse(
             socket
                 .req_parts()
@@ -66,9 +90,9 @@ impl SocketHub {
             return;
         }
         let versioned = protocol.is_some();
-        let mut changes = app.snapshot.subscribe();
-        let mut notifications = app.notifications.subscribe();
-        let initial = app.snapshot.read().await.clone();
+        let mut changes = account.snapshot.subscribe();
+        let mut notifications = account.notifications.subscribe();
+        let initial = account.snapshot.read().await.clone();
         let token = token_from_headers(&socket.req_parts().headers);
         let state = self.auth.state.lock().await;
         let now = unix_now();
@@ -79,6 +103,7 @@ impl SocketHub {
         let cancelled = app.shutdown.child_token();
         let resync = Arc::new(Notify::new());
         socket.extensions.insert(SocketSession {
+            account: Some(account.clone()),
             token: token.clone(),
             cancelled: cancelled.clone(),
             resync: resync.clone(),
@@ -126,6 +151,7 @@ impl SocketHub {
                 let force = tokio::select! {
                     biased;
                     _ = cancelled.cancelled() => break,
+                    _ = account.shutdown.cancelled() => { let _ = outgoing.clone().disconnect(); break; },
                     _ = resync.notified() => true,
                     result = changes.changed() => { if result.is_err() { break; } false },
                     result = notifications.recv() => {
@@ -141,7 +167,7 @@ impl SocketHub {
                     }
                 };
                 let Some(app) = weak.upgrade() else { break };
-                let next = app.snapshot.read().await.clone();
+                let next = account.snapshot.read().await.clone();
                 if !force && next.revision <= previous.revision { continue; }
                 let patch = crate::app::projection::StatePatch::between(&previous, &next);
                 let auth = app.auth.state.lock().await;
@@ -166,10 +192,17 @@ impl SocketHub {
                 if let Some(app) = weak.upgrade()
                     && app.sockets.authorized(&socket).await
                 {
+                    let Some(account) = socket
+                        .extensions
+                        .get::<SocketSession>()
+                        .and_then(|session| session.account.clone())
+                    else {
+                        return;
+                    };
                     if matches!(command, Command::Refresh { clear_cache: false }) {
-                        let _ = app.refresh_inventory().await;
+                        let _ = account.refresh_inventory().await;
                     } else {
-                        let _ = app.command(command.clone()).await;
+                        let _ = account.command(command.clone()).await;
                     }
                 }
             });
@@ -177,13 +210,85 @@ impl SocketHub {
         let weak = Arc::downgrade(app);
         socket.on("get_wanted_items", async move |socket: SocketRef| {
             if let Some(app) = weak.upgrade() {
-                let wanted_items = app.snapshot.read().await.wanted_items.clone();
+                let Some(account) = socket
+                    .extensions
+                    .get::<SocketSession>()
+                    .and_then(|session| session.account.clone())
+                else {
+                    return;
+                };
+                let wanted_items = account.snapshot.read().await.wanted_items.clone();
                 let auth = app.auth.state.lock().await;
                 if Self::allowed(&socket, &auth) {
                     let _ = socket.emit("wanted_items_update", &wanted_items);
                 } else {
                     let _ = socket.disconnect();
                 }
+            }
+        });
+    }
+
+    async fn connected_overview(&self, socket: SocketRef, app: &Arc<App>) {
+        let mut changes = app.accounts.subscribe();
+        let mut notifications = app.accounts.notifications.subscribe();
+        let initial = app.accounts.overview().await;
+        let token = token_from_headers(&socket.req_parts().headers);
+        let auth = self.auth.state.lock().await;
+        let now = unix_now();
+        if !auth.allowed(&token, now) {
+            let _ = socket.disconnect();
+            return;
+        }
+        let cancelled = app.shutdown.child_token();
+        let resync = Arc::new(Notify::new());
+        socket.extensions.insert(SocketSession {
+            account: None,
+            token: token.clone(),
+            cancelled: cancelled.clone(),
+            resync: resync.clone(),
+            versioned: true,
+        });
+        socket.on_disconnect(async |socket: SocketRef| {
+            if let Some(session) = socket.extensions.remove::<SocketSession>() {
+                session.cancelled.cancel();
+            }
+        });
+        socket.on("state_resync", async |socket: SocketRef| {
+            if let Some(session) = socket.extensions.get::<SocketSession>() {
+                session.resync.notify_one();
+            }
+        });
+        if auth.enabled() {
+            let remaining = expiry_delay(auth.expires_at(&token).unwrap_or(now), now);
+            let expiring = socket.clone();
+            self.tasks
+                .spawn(expire_after(remaining, cancelled.clone(), move || {
+                    let _ = expiring.disconnect();
+                }));
+        }
+        if socket.emit("accounts", &initial).is_err() {
+            let _ = socket.clone().disconnect();
+        }
+        drop(auth);
+        let weak = Arc::downgrade(app);
+        self.tasks.spawn(async move {
+            loop {
+                let event = tokio::select! { biased;
+                    _ = cancelled.cancelled() => break,
+                    _ = resync.notified() => None,
+                    result = changes.changed() => { if result.is_err() { break; } None },
+                    result = notifications.recv() => match result { Ok(value) => Some(value), Err(_) => continue },
+                };
+                let Some(app) = weak.upgrade() else { break; };
+                let overview = if event.is_none() { Some(app.accounts.overview().await) } else { None };
+                let auth = app.auth.state.lock().await;
+                if !Self::allowed(&socket, &auth) { let _ = socket.clone().disconnect(); break; }
+                let sent = match (event, overview) {
+                    (Some(event), _) => socket.emit("notification", &event),
+                    (_, Some(overview)) => socket.emit("accounts", &overview),
+                    _ => continue,
+                };
+                if sent.is_err() { let _ = socket.clone().disconnect(); break; }
             }
         });
     }

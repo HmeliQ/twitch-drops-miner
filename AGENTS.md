@@ -49,6 +49,7 @@ Do not add forwarding hierarchies or speculative traits with one implementation.
 | --- | --- |
 | `src/main.rs` | Server CLI/env, HTTP lifecycle and healthcheck |
 | `crates/core/src/runtime.rs`, `logging.rs` | Shared owned miner shutdown and credential-safe logging |
+| `crates/core/src/accounts/` | Installation-owned account registry, runtimes, onboarding, bulk commands and shared Connection settings |
 | `config.rs`, `dto.rs` | Typed settings, compatible migration, API snapshots |
 | `domain.rs`, `policy.rs` | Campaign/drop/channel eligibility and dependency-aware ignores |
 | `store.rs` | Exclusive data directory, atomic settings/history/archive/claim journal |
@@ -72,7 +73,8 @@ embed it and run without a build tool/runtime companion. Production builds never
 ## Desktop contracts
 
 - `desktop/` is a Tauri wrapper around the same core and frontend. No HTTP listener,
-  sidecar, shell companion, alternate miner or second account. Keep Docker behavior intact.
+  sidecar, shell companion or alternate miner. It owns the same multi-account manager as
+  the server. Keep Docker behavior intact.
 - Store native data/logs in the platform app directories, separate from the server. Keep
   the production identifier `app.twitch-drops-miner.local` and a separate `.fixture` identity.
   Do not migrate or delete the former `dev.ohneb.dropsminer` directories.
@@ -141,6 +143,47 @@ embed it and run without a build tool/runtime companion. Production builds never
   verify the extracted archive's bundle signature and both architectures in CI.
 - `desktop-fixture` is temporary/offline test code, excluded from all production builds and
   installers. Native smoke checks exercise the real webview and IPC without Twitch access.
+
+## Multiple accounts
+
+- One `AccountManager` owns independent account applications and their runtimes. Switching
+  the viewed account never pauses another account. Bound active profiles to 20 and stagger
+  startup. An account worker/storage failure remains local; process shutdown drains all workers,
+  accepted writes, onboarding, public catalog work and the one Telegram worker.
+- `accounts.json` binds opaque local IDs to verified immutable Twitch user IDs. The original
+  profile keeps its files at the data root; additional profiles live in `accounts/<id>/`.
+  Preserve existing history/archive/journal formats. Old data without a known identity stays
+  unassigned until explicitly associated. Duplicate identities reuse the existing profile.
+  Sign out retains settings/history; Remove drains the account, removes its session and hides
+  the registry entry without deleting retained data. Readding restores that identity's profile.
+- Onboarding uses the existing device-code OAuth flow, one owned attempt at a time. Verified
+  credentials stay in memory until Finish, expire after ten minutes and never enter public
+  snapshots. No mining or claiming starts before Finish. Reauthentication cannot change the
+  bound Twitch user. Signed-out managed profiles wait without starting hidden login flows.
+- Every account HTTP/IPC request and full-state subscription has an explicit profile ID.
+  Legacy unscoped requests work only with one visible account. No mutable server-wide viewed
+  account exists. Snapshots/patches carry account and process identities; old subscriptions and
+  delayed requests cannot follow a UI switch. Account overview publications contain summary
+  data only. Global auth, Connection, Telegram and shutdown routes remain separate.
+- `connection.json` owns proxy, quality and inventory refresh interval for the installation,
+  including Telegram's proxy. Per-account settings expose the effective values for compatibility
+  but cannot change them. Save shared values atomically before fanout; inject them on restart.
+  A shared public catalog cache coalesces downloads for 30 seconds (five seconds for failure),
+  while account parsing and evidence stay separate. Shared HTTP scheduling reserves capacity
+  for beacons, progress, playback tokens and claims separately from discovery. Never share
+  authenticated clients, cookies, account inventory or claim evidence.
+- Bulk pause/resume and preference copying capture target IDs and settings revisions. Apply
+  each independently and report partial failures. Copy games/order, priority, automatic reward
+  rules, ignores and reward types; copying auto-claim is explicit. Do not copy pause, manual
+  selection, credentials, history, display filters, Connection or Telegram settings.
+- One Telegram bot handles all accounts. `/accounts` offers an owner-only paginated selector,
+  independent of the viewed UI account; existing commands target that saved selection. Inline
+  selections require a fresh issued nonce, matching private owner and bot identity and a valid
+  current profile. Configuration changes/restarts discard them. Multi-account replies and
+  claim notifications name the account. Account logout fences only that account's deliveries.
+- Desktop tray actions distinguish the viewed account from all accounts and capture revisions.
+  Keep-awake is installation-wide: any connected, unpaused, actively watching account may hold
+  the single owned guard. Quit, restart and installation drain all accounts.
 
 ## Mining contracts
 

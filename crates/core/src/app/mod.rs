@@ -18,7 +18,7 @@ use serde_json::Value;
 use state::PublishedState;
 use std::{
     path::PathBuf,
-    sync::{Arc, LazyLock},
+    sync::{Arc, LazyLock, OnceLock, Weak},
 };
 use tokio::sync::{Mutex, RwLock, Semaphore, broadcast, mpsc, oneshot};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -49,6 +49,10 @@ pub struct Notification {
 }
 
 pub struct Application {
+    pub account_id: String,
+    pub(crate) accounts: OnceLock<Weak<crate::accounts::AccountManager>>,
+    pub(crate) session_changed: tokio::sync::watch::Sender<u64>,
+    pub(crate) notification_cancel: std::sync::Mutex<CancellationToken>,
     pub data: Arc<DataDirectory>,
     pub settings: RwLock<Settings>,
     pub snapshot: PublishedState,
@@ -58,7 +62,7 @@ pub struct Application {
     pub(crate) writes: TaskTracker,
     pub(crate) settings_slot: Arc<Semaphore>,
     pub notifications: broadcast::Sender<Notification>,
-    pub telegram: crate::notifications::Telegram,
+    pub telegram: Arc<crate::notifications::Telegram>,
     pub(crate) directory_queries: RwLock<Option<mpsc::Sender<commands::DirectoryRequest>>>,
     commands: mpsc::Sender<CommandRequest>,
 }
@@ -66,12 +70,25 @@ pub struct Application {
 impl Application {
     pub fn open(directory: PathBuf) -> Result<(Arc<Self>, mpsc::Receiver<CommandRequest>)> {
         let data = Arc::new(DataDirectory::open(directory)?);
-        let settings = data.settings()?;
-        let telegram = crate::notifications::Telegram::open(&data.path)?;
+        let telegram = Arc::new(crate::notifications::Telegram::open(&data.path)?);
+        Self::open_account(data, crate::accounts::PRIMARY.into(), telegram, None)
+    }
+
+    pub(crate) fn open_account(
+        data: Arc<DataDirectory>,
+        account_id: String,
+        telegram: Arc<crate::notifications::Telegram>,
+        connection: Option<&crate::accounts::Connection>,
+    ) -> Result<(Arc<Self>, mpsc::Receiver<CommandRequest>)> {
+        let mut settings = data.settings()?;
+        if let Some(connection) = connection {
+            connection.apply(&mut settings);
+        }
         let (commands, receiver) = mpsc::channel(64);
         let history = History::load(&data.path);
         let archive = CampaignArchive::load(&data.path);
         let mut snapshot = Snapshot {
+            account_id: account_id.clone(),
             mining: crate::dto::MiningStatus {
                 state: crate::dto::MiningState::AccountRequired,
                 ..Default::default()
@@ -88,6 +105,10 @@ impl Application {
         snapshot.settings.refresh_game_keys();
         Ok((
             Arc::new(Self {
+                account_id,
+                accounts: OnceLock::new(),
+                session_changed: tokio::sync::watch::channel(0).0,
+                notification_cancel: std::sync::Mutex::new(CancellationToken::new()),
                 data,
                 settings: RwLock::new(settings),
                 snapshot: PublishedState::new(snapshot)?,
@@ -103,6 +124,39 @@ impl Application {
             }),
             receiver,
         ))
+    }
+
+    pub fn accounts(&self) -> Option<Arc<crate::accounts::AccountManager>> {
+        self.accounts.get().and_then(Weak::upgrade)
+    }
+
+    pub fn cancel_notifications(&self) {
+        let mut cancel = self.notification_cancel.lock().unwrap();
+        cancel.cancel();
+        *cancel = CancellationToken::new();
+        if self.accounts.get().is_none() {
+            self.telegram.cancel_pending();
+        }
+    }
+
+    pub(crate) fn process_cancel(&self) -> CancellationToken {
+        self.accounts().map_or_else(
+            || self.shutdown.clone(),
+            |accounts| accounts.shutdown.clone(),
+        )
+    }
+
+    pub(crate) fn global_writes(&self) -> TaskTracker {
+        self.accounts()
+            .map_or_else(|| self.writes.clone(), |accounts| accounts.global_writes())
+    }
+
+    pub(crate) async fn connection_proxy(&self) -> String {
+        if let Some(accounts) = self.accounts() {
+            accounts.proxy().await
+        } else {
+            self.settings.read().await.proxy.clone()
+        }
     }
 
     pub async fn command(&self, command: Command) -> Result<(), AppError> {
@@ -266,6 +320,7 @@ impl Application {
             title: message("gui.backend.drop_claimed", &[]),
             message: drop.name.clone(),
             claim: Some(crate::notifications::Claim {
+                cancel: self.notification_cancel.lock().unwrap().clone(),
                 account,
                 drop_id: drop.id.clone(),
                 game: campaign.game.name.clone(),

@@ -1,3 +1,4 @@
+pub mod accounts;
 pub mod app;
 pub mod config;
 pub mod domain;

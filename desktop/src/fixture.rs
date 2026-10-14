@@ -1,14 +1,15 @@
 //! Offline native smoke test. This module is absent from production packages.
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 use tauri::Manager;
 use twitch_drops_miner_core::{
-    app::{AppError, Application, Command},
+    accounts::AccountManager,
+    app::{AppError, Command},
     dto::{MiningState, Snapshot},
-    runtime::Runtime,
 };
 
-pub async fn start(directory: PathBuf) -> anyhow::Result<Runtime> {
-    let (app, mut commands) = Application::open(directory)?;
+pub async fn start(directory: PathBuf) -> anyhow::Result<Arc<AccountManager>> {
+    let (accounts, mut commands) = AccountManager::open(directory)?;
+    let app = accounts.primary.clone();
     app.telegram.disable_for_fixture();
     let mut snapshot: Snapshot =
         serde_json::from_str(include_str!("../../frontend/tests/fixture.json"))?;
@@ -34,9 +35,10 @@ pub async fn start(directory: PathBuf) -> anyhow::Result<Runtime> {
             }
             let _ = request.complete.send(Ok(()));
         }
-        Ok(())
     });
-    Ok(Runtime::fixture(app, worker))
+    accounts.fixture_observe().await;
+    accounts.fixture_worker(worker);
+    Ok(accounts)
 }
 
 #[tauri::command]

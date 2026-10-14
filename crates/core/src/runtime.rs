@@ -27,8 +27,14 @@ impl Runtime {
     }
 
     pub fn start(app: Arc<Application>, commands: mpsc::Receiver<CommandRequest>) -> Self {
-        let events = app.notifications.subscribe();
-        let notifications = tokio::spawn(crate::notifications::run(app.clone(), events));
+        let notifications = if app.accounts().is_none() {
+            Some(tokio::spawn(crate::notifications::run(
+                app.clone(),
+                app.notifications.subscribe(),
+            )))
+        } else {
+            None
+        };
         let owned = app.clone();
         let worker = tokio::spawn(async move {
             let result = Miner::new(owned.clone(), commands).run().await;
@@ -38,7 +44,7 @@ impl Runtime {
         Self {
             app,
             worker: Some(worker),
-            notifications: Some(notifications),
+            notifications,
         }
     }
 

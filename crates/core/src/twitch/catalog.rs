@@ -18,8 +18,15 @@ pub(super) struct Catalog {
 }
 
 impl TwitchHttp {
+    pub(super) async fn catalog(&self) -> Result<std::sync::Arc<Value>, TwitchError> {
+        if let Some(shared) = &self.shared {
+            shared.catalog(self).await
+        } else {
+            self.fetch_catalog().await.map(std::sync::Arc::new)
+        }
+    }
     #[tracing::instrument(skip_all, fields(operation = "PublicCatalog"))]
-    pub(super) async fn catalog(&self) -> Result<Value, TwitchError> {
+    pub(super) async fn fetch_catalog(&self) -> Result<Value, TwitchError> {
         // One inventory job owns this request. Bound retries and body reads together.
         tokio::time::timeout(Duration::from_secs(30), async {
             let response = self
@@ -50,10 +57,11 @@ impl TwitchHttp {
 
 impl Catalog {
     pub fn parse(
-        payload: Value,
+        payload: impl std::borrow::Borrow<Value>,
         awards: &HashMap<String, DateTime<Utc>>,
         now: DateTime<Utc>,
     ) -> Result<Self, TwitchError> {
+        let payload = payload.borrow();
         let updated_at: DateTime<Utc> = payload["lastUpdatedAt"]
             .as_str()
             .and_then(|v| v.parse().ok())

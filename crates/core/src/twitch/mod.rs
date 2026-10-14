@@ -8,6 +8,7 @@ pub mod operations;
 pub(crate) mod playback;
 mod profile;
 pub mod pubsub;
+pub(crate) mod shared;
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -110,6 +111,7 @@ impl Endpoints {
 
 #[derive(Clone)]
 pub struct TwitchHttp {
+    pub(crate) shared: Option<Arc<shared::SharedNetwork>>,
     pub(crate) client: reqwest::Client,
     catalog_client: reqwest::Client,
     pub(crate) endpoints: Endpoints,
@@ -187,6 +189,7 @@ impl TwitchHttp {
         Ok(Self {
             client,
             catalog_client,
+            shared: None,
             endpoints,
             jar,
             device_id,
@@ -297,6 +300,11 @@ impl TwitchHttp {
             tracing::Span::current().record("method", request.method().as_str());
         }
         for attempt in 0..5 {
+            let shared_permit = if let Some(shared) = &self.shared {
+                Some(shared.acquire(&request, self).await?)
+            } else {
+                None
+            };
             let started = Instant::now();
             // A retry may use cookies received by the previous attempt.
             let capture = self
@@ -312,6 +320,7 @@ impl TwitchHttp {
                 Err(error) => {
                     capture.network(&error, "send", attempt + 1, started.elapsed().as_millis());
                     if retry != RetryPolicy::Never && attempt < 4 {
+                        drop(shared_permit);
                         self.sleep(Duration::from_secs(1 << attempt)).await?;
                         continue;
                     }
@@ -348,6 +357,7 @@ impl TwitchHttp {
                         tracing::debug!(target: "tdm_diagnostics", attempt = attempt + 1, "Retry response capture exceeded one-second budget; body omitted");
                     }
                 }
+                drop(shared_permit);
                 self.sleep(Duration::from_secs(delay)).await?;
                 continue;
             }
@@ -382,6 +392,7 @@ impl TwitchHttp {
                         && status != StatusCode::NO_CONTENT
                         && attempt < 4 =>
                 {
+                    drop(shared_permit);
                     self.sleep(Duration::from_secs(1 << attempt)).await?;
                 }
                 result => return result,

@@ -30,6 +30,7 @@ enum Failure {
 
 #[derive(Debug, PartialEq, Eq)]
 enum Command {
+    Accounts,
     Help,
     Status,
     Pause,
@@ -41,6 +42,78 @@ enum Command {
 struct Cursor {
     offset: Option<i64>,
     last_date: i64,
+}
+
+struct Picker {
+    nonce: String,
+    created: i64,
+    accounts: Vec<String>,
+}
+
+enum Selection {
+    Account(String),
+    Page(usize),
+}
+
+impl Picker {
+    fn callback(
+        &self,
+        update: &Value,
+        owner: i64,
+        token: &str,
+        now: i64,
+    ) -> Option<(String, Selection)> {
+        let callback = update.get("callback_query")?;
+        let message = &callback["message"];
+        let id = callback["id"].as_str()?;
+        let data = callback["data"].as_str()?;
+        let bot_id = token.split_once(':')?.0.parse::<u64>().ok()?;
+        if owner <= 0
+            || now < self.created
+            || now - self.created > 120
+            || id.is_empty()
+            || id.len() > 128
+            || id.chars().any(char::is_control)
+            || data.len() > 64
+            || callback["from"]["id"].as_i64() != Some(owner)
+            || callback["from"]["is_bot"] != false
+            || message["chat"]["id"].as_i64() != Some(owner)
+            || message["chat"]["type"] != "private"
+            || message["from"]["id"].as_u64() != Some(bot_id)
+            || message["from"]["is_bot"] != true
+            || [
+                "forward_origin",
+                "forward_date",
+                "forward_from",
+                "sender_chat",
+                "via_bot",
+                "edit_date",
+                "business_connection_id",
+            ]
+            .iter()
+            .any(|key| message.get(key).is_some())
+            || callback.get("inline_message_id").is_some()
+        {
+            return None;
+        }
+        let (nonce, action) = data.split_once(':')?;
+        if nonce != self.nonce {
+            return None;
+        }
+        let (kind, value) = action.split_once(':')?;
+        let selection = match kind {
+            "a" if self.accounts.iter().any(|id| id == value) => Selection::Account(value.into()),
+            "p" => {
+                let page = value.parse::<usize>().ok()?;
+                if page >= self.accounts.len().div_ceil(5) {
+                    return None;
+                }
+                Selection::Page(page)
+            }
+            _ => return None,
+        };
+        Some((id.into(), selection))
+    }
 }
 
 impl Cursor {
@@ -98,6 +171,7 @@ fn command(update: &Value, owner: i64, started: i64, now: i64) -> Option<Command
     match (name, argument.is_empty()) {
         ("/start" | "/help", true) => Some(Command::Help),
         ("/status", true) => Some(Command::Status),
+        ("/accounts", true) => Some(Command::Accounts),
         ("/pause", true) => Some(Command::Pause),
         ("/resume", true) => Some(Command::Resume),
         ("/mine", false) if argument.len() <= 100 => Some(Command::Mine(argument.into())),
@@ -163,9 +237,57 @@ fn status(snapshot: &Snapshot) -> String {
 }
 
 impl Session {
+    async fn picker(
+        &self,
+        app: &Application,
+        page: usize,
+        picker: &mut Option<Picker>,
+    ) -> Result<Option<Value>, AppError> {
+        let Some(accounts) = app.accounts() else {
+            return Ok(None);
+        };
+        let overview = accounts.overview().await;
+        if overview.accounts.is_empty() {
+            *picker = None;
+            return Ok(None);
+        }
+        let pages = overview.accounts.len().div_ceil(5);
+        let page = page.min(pages - 1);
+        let nonce = crate::random_hex::<8>().map_err(|_| AppError::Unavailable)?;
+        let mut rows: Vec<Value> = overview
+            .accounts
+            .iter()
+            .skip(page * 5)
+            .take(5)
+            .map(|account| {
+                let label: String = account.name.chars().take(40).collect();
+                json!([{"text":label,"callback_data":format!("{nonce}:a:{}", account.id)}])
+            })
+            .collect();
+        let mut navigation = vec![];
+        if page > 0 {
+            navigation.push(json!({"text":text("previous", &[]),"callback_data":format!("{nonce}:p:{}", page - 1)}));
+        }
+        if page + 1 < pages {
+            navigation.push(
+                json!({"text":text("next", &[]),"callback_data":format!("{nonce}:p:{}", page + 1)}),
+            );
+        }
+        if !navigation.is_empty() {
+            rows.push(json!(navigation));
+        }
+        *picker = Some(Picker {
+            nonce,
+            created: Utc::now().timestamp(),
+            accounts: overview.accounts.into_iter().map(|a| a.id).collect(),
+        });
+        Ok(Some(json!({"inline_keyboard":rows})))
+    }
+
     async fn api(&self, app: &Application, method: &str, body: Value) -> Result<Value, Failure> {
+        let shutdown = app.process_cancel();
         let operation = async {
-            let proxy = app.settings.read().await.proxy.clone();
+            let proxy = app.connection_proxy().await;
             let client = app
                 .telegram
                 .client(&proxy)
@@ -175,7 +297,11 @@ impl Session {
                     "{}/bot{}/{method}",
                     app.telegram.endpoint, self.config.token
                 ))
-                .timeout(Duration::from_secs(30))
+                .timeout(Duration::from_secs(if method == "getUpdates" {
+                    30
+                } else {
+                    10
+                }))
                 .json(&body)
                 .send()
                 .await
@@ -202,13 +328,34 @@ impl Session {
             value.get("result").cloned().ok_or(Failure::Unavailable)
         };
         tokio::select! { biased;
-            _ = app.shutdown.cancelled() => Err(Failure::Cancelled),
+            _ = shutdown.cancelled() => Err(Failure::Cancelled),
             _ = self.cancel.cancelled() => Err(Failure::Cancelled),
             result = operation => result,
         }
     }
 
     async fn execute(&self, app: &Arc<Application>, command: Command) -> Result<String, AppError> {
+        if matches!(command, Command::Help | Command::Accounts) {
+            return Ok(text("help", &[]));
+        }
+        let (app, name) = if let Some(accounts) = app.accounts() {
+            let Ok(selected) = accounts.telegram_account().await else {
+                return Ok(text("choose_account", &[]));
+            };
+            let overview = accounts.overview().await;
+            let name = (overview.accounts.len() > 1)
+                .then(|| {
+                    overview
+                        .accounts
+                        .iter()
+                        .find(|a| a.id == selected.account_id)
+                        .map(|a| a.name.clone())
+                })
+                .flatten();
+            (selected, name)
+        } else {
+            (app.clone(), None)
+        };
         let operation = async {
             // Serialize acceptance with configuration saves; accepted settings writes remain owned.
             let _permit = app
@@ -273,14 +420,19 @@ impl Session {
             app.update_settings(patch).await?;
             Ok(reply)
         };
-        tokio::select! { biased;
+        let result = tokio::select! { biased;
             _ = app.shutdown.cancelled() => Err(Error::Cancelled.into()),
             _ = self.cancel.cancelled() => Err(Error::Cancelled.into()),
             result = tokio::time::timeout(Duration::from_secs(15), operation) => result.unwrap_or(Err(AppError::Unavailable)),
-        }
+        };
+        result.map(|reply| {
+            name.map_or_else(|| reply.clone(), |name| format!("{}\n{reply}", html(&name)))
+        })
     }
 
     async fn poll(&self, app: &Arc<Application>) {
+        let shutdown = app.process_cancel();
+        let mut picker = None;
         let mut cursor = Cursor::default();
         let mut tail = false;
         loop {
@@ -291,7 +443,7 @@ impl Session {
                     "getUpdates",
                     json!({
                         "offset":if tail { -1 } else { cursor.offset.unwrap_or(-1) }, "limit":1,
-                        "timeout":if bootstrap { 0 } else { 25 }, "allowed_updates":["message"]
+                        "timeout":if bootstrap { 0 } else { 25 }, "allowed_updates":["message", "callback_query"]
                     }),
                 )
                 .await;
@@ -339,26 +491,92 @@ impl Session {
                             continue;
                         }
                         let owner = self.config.chat_id.parse().unwrap_or(0);
-                        let Some(command) =
-                            command(&update, owner, self.started, Utc::now().timestamp())
-                        else {
-                            continue;
+                        let now = Utc::now().timestamp();
+                        let (command, markup) = if update.get("callback_query").is_some() {
+                            let Some((callback_id, selection)) =
+                                picker.as_ref().and_then(|picker: &Picker| {
+                                    picker.callback(&update, owner, &self.config.token, now)
+                                })
+                            else {
+                                continue;
+                            };
+                            let Some(accounts) = app.accounts() else {
+                                continue;
+                            };
+                            let result = match selection {
+                                Selection::Account(id) => {
+                                    let result = async {
+                                        let _permit =
+                                            app.telegram.writes.acquire().await.map_err(|_| {
+                                                AppError::Telegram(Error::Cancelled)
+                                            })?;
+                                        if self.cancel.is_cancelled()
+                                            || app.telegram.epoch() != self.epoch
+                                        {
+                                            return Err(Error::Cancelled.into());
+                                        }
+                                        accounts
+                                            .request(crate::accounts::Request::TelegramAccount {
+                                                id,
+                                            })
+                                            .await
+                                    }
+                                    .await;
+                                    picker = None;
+                                    result.map(|_| (Command::Status, None))
+                                }
+                                Selection::Page(page) => self
+                                    .picker(app, page, &mut picker)
+                                    .await
+                                    .map(|markup| (Command::Accounts, markup)),
+                            };
+                            let _ = self
+                                .api(
+                                    app,
+                                    "answerCallbackQuery",
+                                    json!({"callback_query_id":callback_id}),
+                                )
+                                .await;
+                            match result {
+                                Ok(result) => result,
+                                Err(_) => continue,
+                            }
+                        } else {
+                            let Some(command) = command(&update, owner, self.started, now) else {
+                                continue;
+                            };
+                            let markup = if command == Command::Accounts {
+                                self.picker(app, 0, &mut picker).await.ok().flatten()
+                            } else {
+                                None
+                            };
+                            (command, markup)
                         };
-                        let reply = match self.execute(app, command).await {
+                        let reply = match if command == Command::Accounts {
+                            Ok(text("choose_account", &[]))
+                        } else {
+                            self.execute(app, command).await
+                        } {
                             Ok(reply) => reply,
-                            Err(AppError::Telegram(Error::Cancelled)) => return,
+                            Err(AppError::Telegram(Error::Cancelled))
+                                if self.cancel.is_cancelled() || shutdown.is_cancelled() =>
+                            {
+                                return;
+                            }
                             Err(AppError::SettingsConflict) => text("conflict", &[]),
                             Err(_) => text("failed", &[]),
                         };
-                        let proxy = app.settings.read().await.proxy.clone();
+                        let proxy = app.connection_proxy().await;
                         let sent = app
                             .telegram
                             .send(
                                 self.epoch,
                                 &reply,
                                 &proxy,
-                                &app.shutdown,
-                                MessageKind::Reply,
+                                &shutdown,
+                                markup
+                                    .as_ref()
+                                    .map_or(MessageKind::Reply, MessageKind::Keyboard),
                                 None,
                             )
                             .await;
@@ -366,7 +584,7 @@ impl Session {
                     }
                     if bootstrap {
                         cursor.offset.get_or_insert(0);
-                        let commands: Vec<_> = ["status", "pause", "resume", "mine", "help"].into_iter()
+                        let commands: Vec<_> = ["accounts", "status", "pause", "resume", "mine", "help"].into_iter()
                             .map(|command| json!({"command":command, "description":text(&format!("menu_{command}"), &[])})).collect();
                         // A missing menu does not disable typed commands, or replace another chat's menu.
                         let _ = self.api(app, "setMyCommands", json!({"scope":{"type":"chat", "chat_id":self.config.chat_id}, "commands":commands})).await;
@@ -380,8 +598,9 @@ impl Session {
     }
 
     async fn wait(&self, app: &Application, duration: Duration) -> bool {
+        let shutdown = app.process_cancel();
         tokio::select! { biased;
-            _ = app.shutdown.cancelled() => false,
+            _ = shutdown.cancelled() => false,
             _ = self.cancel.cancelled() => false,
             _ = tokio::time::sleep(duration) => true,
         }
@@ -402,8 +621,9 @@ fn event(conflict: bool) -> ActivityEvent {
 }
 
 pub(super) async fn run(app: Arc<Application>) {
+    let shutdown = app.process_cancel();
     loop {
-        if app.shutdown.is_cancelled() || app.telegram.delivery.is_closed() {
+        if shutdown.is_cancelled() || app.telegram.delivery.is_closed() {
             return;
         }
         let (session, enabled) = {
@@ -422,7 +642,7 @@ pub(super) async fn run(app: Arc<Application>) {
             session.poll(&app).await;
         } else {
             tokio::select! {
-                _ = app.shutdown.cancelled() => return,
+                _ = shutdown.cancelled() => return,
                 _ = session.cancel.cancelled() => {},
             }
         }

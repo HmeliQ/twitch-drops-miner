@@ -9,8 +9,9 @@ license files with production images.
 PolyForm Noncommercial permits modifications and redistribution under its terms.
 Preserve the required notices. Third-party licenses remain unchanged.
 
-This is a personal, self-hosted hobby project. Multiple accounts, channel-points mining
-and services hosted for other users are outside the current scope. The desktop application
+This is a personal, self-hosted hobby project. Channel-points mining and services hosted
+for other users are outside the current scope. Multiple personal Twitch accounts share
+one installation while retaining separate credentials and mining state. The desktop application
 shares the mining core and dashboard with the self-hosted server.
 Discuss substantial features or refactoring with the maintainer first; an explicit task
 authorization covers its necessary implementation and cleanup.

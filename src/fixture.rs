@@ -40,6 +40,7 @@ pub async fn create(directory: PathBuf) -> anyhow::Result<(Arc<App>, JoinHandle<
     app.telegram.disable_for_fixture();
     Arc::get_mut(&mut app).expect("new application").fixture = true;
     reset_state(&app).await?;
+    app.accounts.fixture_observe().await;
     let worker = tokio::spawn(commands(app.clone(), receiver));
     Ok((app, worker))
 }

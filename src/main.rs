@@ -9,7 +9,6 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use twitch_drops_miner::{
     logging,
-    runtime::Runtime,
     web::{self, App},
 };
 
@@ -100,19 +99,16 @@ async fn run(args: Args) -> Result<()> {
         .with_graceful_shutdown(shutdown.cancelled_owned())
         .await
     });
-    let mut runtime = Runtime::start(app.application.clone(), commands);
+    app.accounts.start(commands).await;
     let mut server_finished = false;
     let mut failure = None;
     tokio::select! {
         _=shutdown_signal()=>{},
         _=app.shutdown.cancelled()=>{},
-        result=runtime.wait()=>{if result.is_err(){failure=Some("mining task failed");}},
         result=&mut server=>{server_finished=true;if !matches!(result,Ok(Ok(()))){failure=Some("dashboard server failed");}},
     }
     app.shutdown.cancel();
-    if runtime.shutdown().await.is_err() {
-        failure = Some("mining task failed");
-    }
+    app.accounts.shutdown().await;
     app.sockets.close().await;
     if !server_finished {
         match tokio::time::timeout(Duration::from_secs(10), &mut server).await {

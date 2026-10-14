@@ -334,7 +334,9 @@ async fn test_delivery_does_not_discard_claims_and_clears_old_errors() {
     let server = MockServer::start().await;
     let dir = tempfile::tempdir().unwrap();
     let (mut app, _) = Application::open(dir.path().into()).unwrap();
-    Arc::get_mut(&mut app).unwrap().telegram.endpoint = server.uri();
+    Arc::get_mut(&mut Arc::get_mut(&mut app).unwrap().telegram)
+        .unwrap()
+        .endpoint = server.uri();
     let mut config = update(&app.telegram);
     config.include_image = true;
     app.save_telegram(config).await.unwrap();
@@ -367,6 +369,7 @@ async fn test_delivery_does_not_discard_claims_and_clears_old_errors() {
         title: "Drop claimed".into(),
         message: "Reward".into(),
         claim: Some(Claim {
+            cancel: CancellationToken::new(),
             account: 1,
             drop_id: "new-drop".into(),
             game: "Game".into(),
@@ -520,7 +523,9 @@ async fn worker_deduplicates_claims_and_never_exposes_internal_metadata() {
     let server = MockServer::start().await;
     let dir = tempfile::tempdir().unwrap();
     let (mut app, _) = Application::open(dir.path().into()).unwrap();
-    Arc::get_mut(&mut app).unwrap().telegram.endpoint = server.uri();
+    Arc::get_mut(&mut Arc::get_mut(&mut app).unwrap().telegram)
+        .unwrap()
+        .endpoint = server.uri();
     let mut config = update(&app.telegram);
     config.include_image = true;
     app.save_telegram(config).await.unwrap();
@@ -535,6 +540,7 @@ async fn worker_deduplicates_claims_and_never_exposes_internal_metadata() {
         title: "Drop claimed".into(),
         message: "Reward".into(),
         claim: Some(Claim {
+            cancel: CancellationToken::new(),
             account: 1,
             drop_id: "drop".into(),
             game: "Game".into(),
@@ -677,6 +683,7 @@ async fn optional_reward_preview_preserves_text_and_only_shares_public_twitch_ar
 #[test]
 fn claim_message_escapes_names_and_bounds_them_before_formatting() {
     let mut claim = Claim {
+        cancel: CancellationToken::new(),
         account: 1,
         drop_id: "drop".into(),
         game: "Shakes & Fidget".into(),

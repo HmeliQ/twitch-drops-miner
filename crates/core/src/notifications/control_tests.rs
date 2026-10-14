@@ -11,6 +11,46 @@ fn incoming(id: i64, text: &str, date: i64) -> Value {
         "chat":{"id":42, "type":"private"}, "from":{"id":42, "is_bot":false}}})
 }
 
+#[test]
+fn account_picker_accepts_only_issued_fresh_private_owner_callbacks() {
+    let picker = Picker {
+        nonce: "0123456789abcdef".into(),
+        created: 2000,
+        accounts: vec!["primary".into()],
+    };
+    let update = json!({"update_id":1,"callback_query":{"id":"callback1","data":"0123456789abcdef:a:primary",
+        "from":{"id":42,"is_bot":false},"message":{"from":{"id":123,"is_bot":true},"chat":{"id":42,"type":"private"}}}});
+    assert!(
+        matches!(picker.callback(&update, 42, "123:token", 2001), Some((_, Selection::Account(id))) if id == "primary")
+    );
+    assert!(picker.callback(&update, 42, "123:token", 2121).is_none());
+    for (pointer, value) in [
+        ("/callback_query/from/id", json!(43)),
+        ("/callback_query/from/is_bot", json!(true)),
+        ("/callback_query/message/chat/id", json!(43)),
+        ("/callback_query/message/chat/type", json!("group")),
+        ("/callback_query/message/from/id", json!(999)),
+        ("/callback_query/message/forward_origin", json!({})),
+        ("/callback_query/data", json!("expired:a:primary")),
+        ("/callback_query/data", json!("0123456789abcdef:a:missing")),
+        ("/callback_query/data", json!("0123456789abcdef:p:999")),
+        ("/callback_query/inline_message_id", json!("inline")),
+    ] {
+        let mut invalid = update.clone();
+        let (parent, key) = pointer.rsplit_once('/').unwrap();
+        invalid
+            .pointer_mut(parent)
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .insert(key.into(), value);
+        assert!(
+            picker.callback(&invalid, 42, "123:token", 2001).is_none(),
+            "{pointer}"
+        );
+    }
+}
+
 fn configuration(service: &Telegram) -> Update {
     Update {
         revision: service.view().revision,
@@ -42,7 +82,9 @@ async fn application(
 ) {
     let dir = tempfile::tempdir().unwrap();
     let (mut app, commands) = Application::open(dir.path().into()).unwrap();
-    Arc::get_mut(&mut app).unwrap().telegram.endpoint = server.uri();
+    Arc::get_mut(&mut Arc::get_mut(&mut app).unwrap().telegram)
+        .unwrap()
+        .endpoint = server.uri();
     app.telegram.save(configuration(&app.telegram)).unwrap();
     app.snapshot.write().await.login.user_id = Some(7);
     (dir, app, commands)
@@ -394,7 +436,10 @@ async fn polling_discards_backlog_deduplicates_and_replies_without_claim_alerts(
             assert_eq!(body["scope"], json!({"type":"chat","chat_id":"42"}));
         }
         if request.url.path().ends_with("getUpdates") {
-            assert_eq!(body["allowed_updates"], json!(["message"]));
+            assert_eq!(
+                body["allowed_updates"],
+                json!(["message", "callback_query"])
+            );
         }
     }
     app.shutdown.cancel();

@@ -268,6 +268,8 @@ pub struct WantedGame {
 #[derive(Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct Snapshot {
     #[serde(default)]
+    pub account_id: String,
+    #[serde(default)]
     pub mining: MiningStatus,
     #[serde(default)]
     pub protocol: u32,

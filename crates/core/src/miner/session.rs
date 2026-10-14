@@ -242,7 +242,7 @@ pub(super) async fn publish_login(app: &App, mut login: Login) {
     state.login = login;
 }
 pub(super) async fn reset_session(app: &App) {
-    app.telegram.cancel_pending();
+    app.cancel_notifications();
     let archived = app.archive.lock().await.merge(vec![], Utc::now());
     {
         let mut state = app.snapshot.write().await;
@@ -276,14 +276,33 @@ pub(super) async fn authenticate(
 ) -> Result<(TwitchClient, Session), TwitchError> {
     let mut storage = Restarts::default();
     loop {
+        let mut session_changed = app.session_changed.subscribe();
         let attempt = async {
-            let saved = Session::load(&app.data.path)?;
+            let saved = loop {
+                let saved = Session::load(&app.data.path)?;
+                let Some(accounts) = app.accounts() else {
+                    break saved;
+                };
+                if let Some(session) = &saved
+                    && accounts
+                        .identity_matches(&app.account_id, session.user_id)
+                        .await
+                {
+                    break saved;
+                }
+                // Managed logins are explicit. A signed-out profile never starts a hidden device flow.
+                tokio::select! { biased;
+                    _ = cancel.cancelled() => return Err(TwitchError::Cancelled),
+                    _ = session_changed.changed() => {},
+                }
+            };
             let mut http = TwitchHttp::build(
                 settings,
                 saved.as_ref().map(|s| s.device_id.as_str()),
                 cancel.clone(),
                 endpoints.clone(),
             )?;
+            http.shared = app.accounts().map(|accounts| accounts.network.clone());
             let session = if let Some(saved) = saved {
                 saved.restore(&http).await?
             } else {
@@ -340,6 +359,13 @@ pub(super) async fn authenticate(
     }
 }
 pub(super) async fn save_session(app: &Arc<App>, session: &Session) -> Result<(), TwitchError> {
+    if let Some(accounts) = app.accounts()
+        && !accounts
+            .identity_matches(&app.account_id, session.user_id)
+            .await
+    {
+        return Err(TwitchError::Storage);
+    }
     let directory = app.data.path.clone();
     let saved = session.clone();
     tokio::task::spawn_blocking(move || saved.save(&directory))
