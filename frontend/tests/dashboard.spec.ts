@@ -474,13 +474,18 @@ for (const width of [1280, 320]) {
     await page.goto('/settings');
     const account = page.locator('#settings-account');
     const status = account.getByRole('button', { name: 'Twitch 123456', exact: true });
-    const logout = account.getByRole('button', { name: 'Actions for Twitch 123456', exact: true });
+    const logout = account.getByRole('button', { name: 'Sign out Twitch 123456', exact: true });
     await expect(logout).toBeEnabled();
     const h = (await status.locator('..').boundingBox())!;
     const l = (await logout.boundingBox())!;
-    expect(l.x).toBeGreaterThanOrEqual(h.x + h.width);
     expect(l.width).toBe(width < 768 ? 44 : 36);
-    expect(l.y + l.height / 2).toBeCloseTo(h.y + h.height / 2, 0);
+    if (width >= 640) {
+      expect(l.x).toBeGreaterThanOrEqual(h.x + h.width);
+      expect(l.y + l.height / 2).toBeCloseTo(h.y + h.height / 2, 0);
+    } else {
+      expect(l.y).toBeGreaterThanOrEqual(h.y + h.height);
+      expect(l.x + l.width).toBeLessThanOrEqual(width);
+    }
     await expect(account.getByText('Twitch ID: 123456', { exact: true })).toHaveCount(0);
     await account.screenshot({ path: `../artifacts/account-controls-${width}.png` });
 
@@ -1443,9 +1448,8 @@ test('Twitch logout leaves the dashboard and retained profile available for sign
   page,
 }) => {
   await page.goto('/settings#account');
-  await page.getByRole('button', { name: 'Actions for Twitch 123456', exact: true }).click();
+  await page.getByRole('button', { name: 'Sign out Twitch 123456', exact: true }).click();
   const actions = page.getByRole('dialog', { name: 'Twitch 123456', exact: true });
-  await actions.getByRole('button', { name: 'Log out of Twitch', exact: true }).click();
   await actions.getByRole('button', { name: 'Log out of Twitch', exact: true }).click();
   await expect(actions).not.toBeVisible();
   await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();

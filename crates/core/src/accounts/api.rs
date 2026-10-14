@@ -104,16 +104,19 @@ impl AccountManager {
                     self.fixture_confirm(&attempt).await?;
                     return Ok(json!({}));
                 }
-                let login = self.login.lock().await;
+                let mut login = self.login.lock().await;
                 let login = login
-                    .as_ref()
+                    .as_mut()
                     .filter(|a| {
                         a.view.id == attempt
                             && !a.cancel.is_cancelled()
                             && a.expires > tokio::time::Instant::now()
                     })
                     .ok_or(Error::Expired)?;
-                login.confirmed.notify_one();
+                if !login.view.confirmed {
+                    login.view.confirmed = true;
+                    login.confirmed.notify_one();
+                }
                 Ok(json!({}))
             }
             Request::CancelLogin { attempt } => {

@@ -91,7 +91,6 @@ export default function Connection() {
         });
       }}
     >
-      <p className="text-[13px] text-muted">{t('accounts_shared_connection')}</p>
       <fieldset disabled={!connected || command.busy} className="space-y-4">
         <Field label={t('gui.settings.minimum_refresh')}>
           <Input

@@ -163,7 +163,6 @@ export function DesktopUpdates() {
       <UpdateCheck
         version={status?.current_version}
         checking={status?.phase === 'checking'}
-        current={!failure && status?.phase === 'current'}
         disabled={busy || status?.phase === 'ready' || status?.restart_required}
         onCheck={() => void action('check')}
       >

@@ -57,6 +57,7 @@ fn configuration(service: &Telegram) -> Update {
         enabled: false,
         remote_control: true,
         include_image: false,
+        notification_accounts: None,
         token: "123:control_test".into(),
         chat_id: "42".into(),
         remove: false,

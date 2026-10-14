@@ -48,6 +48,7 @@ async fn verified(manager: &AccountManager, user: u64, target: Option<&str>) -> 
     let id = random_hex::<16>().unwrap();
     *manager.login.lock().await = Some(login::Attempt {
         view: LoginView {
+            confirmed: false,
             id: id.clone(),
             target: target.map(str::to_owned),
             code: None,
@@ -99,6 +100,54 @@ async fn target(manager: &AccountManager, id: &str) -> Target {
             .revision
             .clone(),
     }
+}
+
+#[tokio::test]
+async fn accepted_login_confirmation_stays_visible_and_only_wakes_oauth_once() {
+    let (_directory, manager) = manager().await;
+    let attempt = verified(&manager, 73, None).await;
+    let notify = {
+        let mut pending = manager.login.lock().await;
+        let pending = pending.as_mut().unwrap();
+        pending.view.user_id = None;
+        pending.session = None;
+        pending.view.code = Some(crate::dto::OAuthCode {
+            code: "TESTCODE".into(),
+            url: "https://www.twitch.tv/activate".into(),
+        });
+        pending.confirmed.clone()
+    };
+    assert!(!manager.overview().await.login.unwrap().confirmed);
+    manager
+        .request(Request::ConfirmLogin {
+            attempt: attempt.clone(),
+        })
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(1), notify.notified())
+        .await
+        .unwrap();
+    let state = manager.overview().await.login.unwrap();
+    assert!(state.confirmed);
+    assert!(state.user_id.is_none());
+    assert!(state.code.is_some());
+    manager
+        .request(Request::ConfirmLogin {
+            attempt: attempt.clone(),
+        })
+        .await
+        .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(10), notify.notified())
+            .await
+            .is_err()
+    );
+    manager
+        .request(Request::CancelLogin { attempt })
+        .await
+        .unwrap();
+    assert!(manager.overview().await.login.is_none());
+    manager.shutdown().await;
 }
 
 #[tokio::test]

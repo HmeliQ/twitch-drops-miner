@@ -185,9 +185,8 @@ test('device sign-in verifies an account before adding it and removal keeps othe
   await dialog.getByRole('button', { name: 'Add account', exact: true }).click();
   await expect(dialog).not.toBeVisible();
   await expect.poll(async () => (await overview(request)).accounts.length).toBe(4);
-  await page.getByRole('button', { name: 'Actions for Account 2', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove Account 2', exact: true }).click();
   const actions = page.getByRole('dialog', { name: 'Account 2', exact: true });
-  await actions.getByRole('button', { name: 'Remove account', exact: true }).click();
   await expect(actions).toContainText('Its local data is kept');
   await actions.getByRole('button', { name: 'Remove account', exact: true }).click();
   await expect.poll(async () => (await overview(request)).accounts.length).toBe(3);
@@ -370,4 +369,67 @@ test('copy source stays valid when an account becomes unavailable or is removed'
   await request.post('/api/accounts', { headers, data: { action: 'remove', id: third } });
   await expect(source).toHaveValue('primary');
   await expect(copy).toBeDisabled();
+});
+
+test('Done stays disabled after acceptance while Twitch verification is pending', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/settings#account');
+  await page.getByRole('button', { name: 'Add account', exact: true }).click();
+  let confirmations = 0;
+  await page.route('**/api/accounts', async (route) => {
+    if (
+      route.request().method() === 'POST' &&
+      route.request().postDataJSON().action === 'confirm_login'
+    ) {
+      confirmations++;
+      return route.fulfill({ json: {} });
+    }
+    return route.continue();
+  });
+  const dialog = page.getByRole('dialog', { name: 'Add account', exact: true });
+  const done = dialog.getByRole('button', { name: 'Done', exact: true });
+  await expect(
+    dialog.getByText('Authorize the Twitch account', { exact: false }),
+  ).not.toBeVisible();
+  await done.click();
+  await expect(done).toBeDisabled();
+  await expect(dialog.locator('code')).toHaveText('TESTCODE');
+  await page.waitForTimeout(150);
+  await expect(done).toBeDisabled();
+  expect(confirmations).toBe(1);
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  expect((await overview(request)).login).toBeNull();
+});
+
+test('account actions and expanded profile stay compact on phone and desktop', async ({
+  page,
+  request,
+}) => {
+  await seed(request);
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/settings#account');
+    const panel = page.locator('#settings-account');
+    await expect(panel.locator('summary')).toHaveCount(0);
+    await expect(panel.getByText('Twitch profile and badges', { exact: true })).toHaveCount(0);
+    await expect(
+      panel.getByRole('button', { name: 'Rename Account 2', exact: true }),
+    ).toBeVisible();
+    await expect(
+      panel.getByRole('button', { name: 'Sign out Account 2', exact: true }),
+    ).toBeVisible();
+    await expect(
+      panel.getByRole('button', { name: 'Remove Account 2', exact: true }),
+    ).toBeVisible();
+    await panel.getByRole('button', { name: 'Rename Account 2', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Account 2', exact: true });
+    await expect(dialog.getByRole('textbox', { name: 'Display label', exact: true })).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  }
 });

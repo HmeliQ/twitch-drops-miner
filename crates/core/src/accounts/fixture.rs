@@ -84,6 +84,7 @@ impl AccountManager {
         let id = random_hex::<16>().map_err(|_| Error::Storage)?;
         *pending = Some(login::Attempt {
             view: LoginView {
+                confirmed: false,
                 id: id.clone(),
                 target,
                 code: Some(OAuthCode {
@@ -122,6 +123,7 @@ impl AccountManager {
             display_name: format!("Fixture {user}"),
             ..Default::default()
         };
+        attempt.view.confirmed = true;
         attempt.session = Some(serde_json::from_value(json!({"version":1,"client_id":crate::twitch::CLIENT_ID,"user_id":user,"device_id":"offlinefixture","access_token":"offlinefixture","refresh_token":null})).map_err(|_| Error::Invalid)?);
         attempt.profile = Some(profile.clone());
         attempt.view.code = None;

@@ -34,6 +34,8 @@ struct Config {
     remote_control: bool,
     #[serde(default)]
     include_image: bool,
+    #[serde(default)]
+    notification_accounts: Option<Vec<u64>>,
     token: String,
     chat_id: String,
 }
@@ -43,6 +45,7 @@ pub struct View {
     pub enabled: bool,
     pub remote_control: bool,
     pub include_image: bool,
+    pub notification_accounts: Option<Vec<u64>>,
     pub token_configured: bool,
     pub chat_id: String,
     pub revision: String,
@@ -71,6 +74,8 @@ pub struct Update {
     pub remote_control: bool,
     #[serde(default)]
     pub include_image: bool,
+    #[serde(default)]
+    pub notification_accounts: Option<Vec<u64>>,
     #[serde(default)]
     pub token: String,
     #[serde(default)]
@@ -199,6 +204,10 @@ impl Config {
         let chat = self.chat_id.is_empty() || self.chat_id.parse::<i64>().is_ok_and(|id| id != 0);
         self.token.len() <= 256
             && self.chat_id.len() <= 24
+            && self
+                .notification_accounts
+                .as_ref()
+                .is_none_or(|accounts| accounts.len() <= 100 && accounts.iter().all(|id| *id > 0))
             && token
             && chat
             && (!(self.enabled || self.remote_control)
@@ -257,11 +266,22 @@ impl Telegram {
             enabled: state.config.enabled,
             remote_control: state.config.remote_control,
             include_image: state.config.include_image,
+            notification_accounts: state.config.notification_accounts.clone(),
             token_configured: !state.config.token.is_empty(),
             chat_id: state.config.chat_id.clone(),
             revision: state.revision.clone(),
             unreadable: state.unreadable,
         }
+    }
+
+    fn claim_enabled(&self, account: u64) -> bool {
+        let state = self.state.lock().unwrap();
+        state.config.enabled
+            && state
+                .config
+                .notification_accounts
+                .as_ref()
+                .is_none_or(|accounts| accounts.contains(&account))
     }
 
     pub fn epoch(&self) -> u64 {
@@ -297,6 +317,11 @@ impl Telegram {
                 enabled: update.enabled,
                 remote_control: update.remote_control,
                 include_image: update.include_image,
+                notification_accounts: update.notification_accounts.map(|mut accounts| {
+                    accounts.sort_unstable();
+                    accounts.dedup();
+                    accounts
+                }),
                 token: if update.token.is_empty() {
                     state.config.token.clone()
                 } else {
@@ -599,7 +624,7 @@ async fn run_claims(app: Arc<Application>, mut events: broadcast::Receiver<Notif
         };
         if claim.cancel.is_cancelled()
             || claim.epoch != app.telegram.epoch()
-            || !app.telegram.view().enabled
+            || !app.telegram.claim_enabled(claim.account)
             || owner.snapshot.read().await.login.user_id != Some(claim.account)
         {
             continue;

@@ -165,6 +165,7 @@ for (const width of [1280, 390]) {
     const updates = page.getByRole('region', { name: 'App updates' });
     const check = updates.getByRole('button', { name: 'Check for updates', exact: true });
     await expect(updates.getByTitle('Installed version: 2.0.1')).toHaveText('v2.0.1');
+    await expect(updates.getByTitle('Installed version: 2.0.1')).toHaveClass(/text-accent/);
     await expect(updates.getByRole('status')).toHaveText("You're up to date.");
     await expect(page.locator('#settings-maintenance details')).toHaveCount(0);
     await expect(page.locator('#settings-maintenance')).not.toContainText(

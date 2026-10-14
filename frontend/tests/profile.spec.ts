@@ -72,6 +72,9 @@ for (const viewport of [
       expect(avatarBox.x).toBeCloseTo(github.x, 1);
       expect((await badge.boundingBox())!.x).toBeGreaterThanOrEqual(avatarBox.x + avatarBox.width);
       expect((await name.boundingBox())!.x).toBeGreaterThan((await badge.boundingBox())!.x);
+      expect(await name.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+        true,
+      );
       await page
         .locator('aside')
         .screenshot({ path: `../artifacts/account-sidebar-${viewport.width}.png` });
@@ -83,14 +86,13 @@ for (const viewport of [
     }
     await expect(page).toHaveURL(/\/settings#account$/);
     const settings = page.locator('#settings-account');
-    await settings.locator('summary').click();
     const identity = settings.locator('.account-identity');
     await expect(identity.getByText('Northwind', { exact: true })).toBeVisible();
     await expect(identity.getByRole('img', { name: 'Event badge', exact: true })).toBeVisible();
     await expect(page.locator('.account-card')).toHaveCount(0);
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(settings).not.toContainText('Global badges');
-    await expect(settings.locator('time, dl, [popover]')).toHaveCount(0);
+    await expect(settings.locator('time, dl')).toHaveCount(0);
     const profileLink = settings.getByRole('link', { name: 'Open Twitch profile', exact: true });
     await expect(profileLink).toHaveAttribute('href', 'https://www.twitch.tv/northwind_login');
     await expect(profileLink).toHaveAttribute('target', '_blank');
@@ -144,7 +146,6 @@ test('account settings handle missing and empty badge collections, broken art, a
   await publish({ ...fixture.login, profile: { ...profile, available_badges: null } });
   await page.goto('/settings#account');
   const settings = page.locator('#settings-account');
-  await settings.locator('summary').click();
   const badges = settings.getByRole('region', { name: 'Badges', exact: true });
   await expect(settings).toContainText('Full badge collection unavailable.');
   await expect(badges.getByRole('button')).toHaveCount(1);
@@ -174,9 +175,8 @@ test('account settings handle missing and empty badge collections, broken art, a
   );
   await expect(settings).toContainText('No badges available.');
   await expect(settings).not.toContainText('Full badge collection unavailable.');
-  await page.getByRole('button', { name: 'Actions for Other account', exact: true }).click();
+  await page.getByRole('button', { name: 'Sign out Other account', exact: true }).click();
   const actions = page.getByRole('dialog', { name: 'Other account', exact: true });
-  await actions.getByRole('button', { name: 'Log out of Twitch', exact: true }).click();
   await actions.getByRole('button', { name: 'Log out of Twitch', exact: true }).click();
   await expect(settings.locator('.account-identity')).toHaveCount(0);
   await expect(settings.getByRole('link', { name: 'Open Twitch profile' })).toHaveCount(0);

@@ -11,6 +11,7 @@ import {
   Check,
   Dialog,
   Field,
+  HelpButton,
   IconButton,
   Input,
   Notice,
@@ -24,6 +25,7 @@ export default function AccountLogin({ onClose }: { onClose: () => void }) {
   const t = useT();
   const command = useAction();
   const [label, setLabel] = useState('');
+  const [confirmedAttempt, setConfirmedAttempt] = useState<string | null>(null);
   const [source, setSource] = useState('');
   const [autoClaim, setAutoClaim] = useState(false);
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
@@ -91,9 +93,8 @@ export default function AccountLogin({ onClose }: { onClose: () => void }) {
                 <>
                   <Field
                     label={t('accounts_label')}
-                    help={t(
-                      validAccountLabel(label) ? 'accounts_label_help' : 'accounts_label_invalid',
-                    )}
+                    detail={t('accounts_label_help')}
+                    help={!validAccountLabel(label) ? t('accounts_label_invalid') : undefined}
                   >
                     <Input
                       value={label}
@@ -104,7 +105,10 @@ export default function AccountLogin({ onClose }: { onClose: () => void }) {
                     />
                   </Field>
                   {!login.target && (
-                    <Field label={t('accounts_initial_preferences')}>
+                    <Field
+                      label={t('accounts_initial_preferences')}
+                      detail={t('accounts_copy_help')}
+                    >
                       <select
                         className="field"
                         value={source}
@@ -123,7 +127,6 @@ export default function AccountLogin({ onClose }: { onClose: () => void }) {
                   )}
                   {source && (
                     <>
-                      <p className="text-xs text-muted">{t('accounts_copy_help')}</p>
                       <Check
                         label={t('accounts_copy_auto_claim')}
                         checked={autoClaim}
@@ -131,15 +134,11 @@ export default function AccountLogin({ onClose }: { onClose: () => void }) {
                       />
                     </>
                   )}
-                  <p className="text-[13px] text-muted">
-                    {t(target ? 'accounts_reconnect_help' : 'accounts_finish_help')}
-                  </p>
                 </>
               )}
             </>
           ) : login.code ? (
             <>
-              <p className="text-[13px] text-muted">{t('accounts_login_help')}</p>
               <div className="authorization-row">
                 <div className="flex items-center gap-2 rounded border border-divider bg-field ps-3 pe-1">
                   <code className="select-all text-lg tracking-[.2em]">{login.code.code}</code>
@@ -161,13 +160,20 @@ export default function AccountLogin({ onClose }: { onClose: () => void }) {
                   <Icon path={mdiOpenInNew} className="mdi-icon" />
                 </a>
                 <Button
-                  disabled={command.busy}
-                  onClick={() =>
-                    void command.run(() => action({ action: 'confirm_login', attempt: login.id }))
-                  }
+                  disabled={command.busy || login.confirmed || confirmedAttempt === login.id}
+                  aria-busy={command.busy || login.confirmed || confirmedAttempt === login.id}
+                  onClick={async () => {
+                    if (
+                      await command.run(() =>
+                        action({ action: 'confirm_login', attempt: login.id }),
+                      )
+                    )
+                      setConfirmedAttempt(login.id);
+                  }}
                 >
                   {t('gui.login.oauth_confirm')}
                 </Button>
+                <HelpButton label={t('accounts_add')} text={t('accounts_login_help')} />
               </div>
               {copyState === 'copied' && (
                 <span className="sr-only" role="status">

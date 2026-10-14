@@ -37,6 +37,7 @@ export interface AccountLogin {
   id: string;
   target: string | null;
   code: OAuth | null;
+  confirmed: boolean;
   user_id: number | null;
   name: string | null;
   avatar_url: string | null;

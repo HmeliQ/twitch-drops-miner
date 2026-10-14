@@ -1,7 +1,7 @@
 import { Link } from '../../app/accountNavigation';
 import { useCallback, useState } from 'react';
 import { Icon } from '@mdi/react';
-import { mdiAccountMultipleOutline, mdiCheck, mdiChevronDown } from '@mdi/js';
+import { mdiAccountMultipleOutline, mdiCheck } from '@mdi/js';
 import { useAccounts, type AccountSummary } from '../../app/accounts';
 import { useMiner } from '../../app/MinerProvider';
 import AccountIdentity from './Account';
@@ -73,7 +73,6 @@ export default function AccountSwitcher({ compact = false }: { compact?: boolean
               {current ? accountName(current) || t('account') : t('accounts')}
             </span>
           )}
-          {!compact && <Icon path={mdiChevronDown} className="mdi-icon size-4! shrink-0" />}
         </>
       }
     >

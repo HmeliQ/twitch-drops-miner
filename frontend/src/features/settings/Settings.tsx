@@ -189,7 +189,6 @@ function ReleaseNotice({ disabled }: { disabled: boolean }) {
       <UpdateCheck
         version={release?.current_version}
         checking={busy}
-        current={!busy && release?.check_succeeded && !available}
         disabled={disabled}
         onCheck={() => void check()}
       >

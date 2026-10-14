@@ -6,14 +6,12 @@ import { IconButton } from '../../shared/ui';
 export default function UpdateCheck({
   version,
   checking,
-  current = false,
   disabled,
   onCheck,
   children,
 }: {
   version?: string;
   checking: boolean;
-  current?: boolean;
   disabled?: boolean;
   onCheck: () => void;
   children: ReactNode;
@@ -23,7 +21,7 @@ export default function UpdateCheck({
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
       {version && (
         <span
-          className={`inline-flex min-h-6 max-w-full items-center rounded px-2 text-xs font-semibold wrap-anywhere ${current ? 'bg-accent/10 text-accent' : 'bg-raised text-soft'}`}
+          className="inline-flex min-h-6 max-w-full items-center rounded bg-accent/10 px-2 text-xs font-semibold text-accent wrap-anywhere"
           title={t('installed_version', { version })}
         >
           v{version}

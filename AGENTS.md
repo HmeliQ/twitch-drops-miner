@@ -185,11 +185,19 @@ embed it and run without a build tool/runtime companion. Production builds never
   selections require a fresh issued nonce, matching private owner and bot identity and a valid
   current profile. Configuration changes/restarts discard them. Multi-account replies and
   claim notifications name the account. Account logout fences only that account's deliveries.
+  Claim alerts default to all accounts, including newly added accounts. An explicit selection
+  persists Twitch user IDs in `telegram.json`; an empty selection sends no claim alerts.
+  Selection does not restrict commands or tests. Configuration changes cancel pending alerts
+  through the configuration epoch. Keep the selector beside the claim-alert switch.
 - The account switcher lives in the existing sidebar/compact header; management is in Settings >
   Accounts. Preserve per-account routes, filters, scroll, drafts and Up next disclosures. Keep IDs
   in multi-account navigation/deep links. Global Connection/Telegram drafts and in-flight saves
   survive switching; dashboard logout clears private drafts. Suspend unavailable subscriptions,
   fence old publications and reconnect with bounded backoff after recovery.
+  Done stays disabled after accepted login confirmation until verification ends, including
+  after reopening the dialog. Account rows expose rename/sign-out/remove icon buttons;
+  profile and badges stay expanded. Put explanatory text in the existing info popover,
+  keeping errors and destructive-action confirmations visible.
 - Desktop tray actions distinguish the viewed account from all accounts and capture revisions.
   Keep-awake is installation-wide: any connected, unpaused, actively watching account may hold
   the single owned guard. Closing the current native subscription clears viewed tray selection.
@@ -566,8 +574,8 @@ embed it and run without a build tool/runtime companion. Production builds never
   Authenticated 401/403 and cancellation retain existing session handling. Validate identities,
   bounded metadata, image URLs and colors; fetch only identity, color and badge fields.
   Connection status lives in Settings > Connection and is labeled Dashboard connected, separate
-  from Twitch. The Twitch profile external-link and logout icons stay beside the account
-  identity. Use the validated login from the existing account query for the Twitch URL,
+  from Twitch. The Twitch profile external-link stays beside the profile identity; logout
+  lives in the account row beside rename and remove. Use the validated login from the existing account query for the Twitch URL,
   never the display name; omit the link when that login is unavailable. Reuse the activation
   link's Open In New icon, shared icon-button style and native external-link handling.
   Logged-out authorization status stays visible. Done adds no second waiting notice;
@@ -789,8 +797,9 @@ embed it and run without a build tool/runtime companion. Production builds never
   without build metadata, and distinguishes failure from up-to-date status. Keep requests
   bounded/coalesced and release links within this repository. No install/download execution.
   Desktop and server share a compact installed-version badge (`vVERSION`) beside the update
-  check and inline result, with actions or manual-update guidance below. Use the badge's muted
-  accent only after a successful current-version check; errors never appear up to date.
+  check and inline result, with actions or manual-update guidance below. The badge always
+  uses the muted accent; only the adjoining status reports check results. Errors never
+  appear up to date.
   Desktop and server use the same checking, current, available and check-failure wording.
   Check for updates uses the fixed-size MDI Update icon button, with a checking label/tooltip,
   busy state and spinning icon during requests (respect reduced motion); let inline results wrap

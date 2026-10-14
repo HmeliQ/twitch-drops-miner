@@ -18,6 +18,7 @@ pub struct LoginView {
     pub id: String,
     pub target: Option<String>,
     pub code: Option<OAuthCode>,
+    pub confirmed: bool,
     pub user_id: Option<u64>,
     pub name: Option<String>,
     pub avatar_url: Option<String>,
@@ -82,6 +83,7 @@ impl AccountManager {
         let expires = Instant::now() + Duration::from_secs(600);
         *pending = Some(Attempt {
             view: LoginView {
+                confirmed: false,
                 id: id.clone(),
                 target,
                 code: None,

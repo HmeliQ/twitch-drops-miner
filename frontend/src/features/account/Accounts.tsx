@@ -3,7 +3,9 @@ import { Icon } from '@mdi/react';
 import {
   mdiAccountPlusOutline,
   mdiContentCopy,
-  mdiDotsHorizontal,
+  mdiPencil,
+  mdiLogout,
+  mdiDeleteOutline,
   mdiOpenInNew,
   mdiPause,
   mdiPlay,
@@ -124,17 +126,16 @@ export default function Accounts() {
       setLoginOpen(true);
     }
   }
-  function openMenu(account: AccountSummary) {
+  function openMenu(account: AccountSummary, operation: 'rename' | 'sign_out' | 'remove') {
     command.clear();
     setMenu(account);
-    setOperation(null);
+    setOperation(operation);
     setLabel(account.label);
     setAssociate(false);
   }
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[13px] text-muted">{t('accounts_overview_help')}</p>
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <Button
           disabled={disabled || (!overview?.login && accounts.length >= (overview?.limit ?? 20))}
           onClick={() => (overview?.login ? setLoginOpen(true) : void login())}
@@ -193,7 +194,10 @@ export default function Accounts() {
             aria-label={t('accounts')}
           >
             {accounts.map((account) => (
-              <div key={account.id} className="flex min-h-20 items-center gap-3 px-4 py-3">
+              <div
+                key={account.id}
+                className="grid min-h-20 grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1 px-4 py-3 sm:grid-cols-[auto_auto_minmax(0,1fr)_auto]"
+              >
                 <label className="flex min-h-11 shrink-0 items-center">
                   <input
                     type="checkbox"
@@ -231,31 +235,51 @@ export default function Accounts() {
                     <p className="truncate text-xs text-muted">{account.reward}</p>
                   )}
                 </div>
-                {!account.connected && !account.unavailable && (
-                  <Button
+                <div className="col-start-3 flex flex-wrap items-center justify-end gap-1 sm:col-start-auto">
+                  {!account.connected && !account.unavailable && (
+                    <Button
+                      disabled={disabled}
+                      className="shrink-0"
+                      onClick={() => void login(account)}
+                    >
+                      {t('accounts_sign_in')}
+                    </Button>
+                  )}
+                  {account.unavailable && (
+                    <Button
+                      disabled={disabled}
+                      onClick={() =>
+                        void command.run(() => action({ action: 'retry', id: account.id }))
+                      }
+                    >
+                      {t('retry')}
+                    </Button>
+                  )}
+                  <IconButton
+                    path={mdiPencil}
+                    label={t('accounts_rename_name', {
+                      name: accountName(account) || t('account'),
+                    })}
                     disabled={disabled}
-                    className="shrink-0"
-                    onClick={() => void login(account)}
-                  >
-                    {t('accounts_sign_in')}
-                  </Button>
-                )}
-                {account.unavailable && (
-                  <Button
+                    onClick={() => openMenu(account, 'rename')}
+                  />
+                  <IconButton
+                    path={mdiLogout}
+                    label={t('accounts_sign_out_name', {
+                      name: accountName(account) || t('account'),
+                    })}
+                    disabled={disabled || !account.connected}
+                    onClick={() => openMenu(account, 'sign_out')}
+                  />
+                  <IconButton
+                    path={mdiDeleteOutline}
+                    label={t('accounts_remove_name', {
+                      name: accountName(account) || t('account'),
+                    })}
                     disabled={disabled}
-                    onClick={() =>
-                      void command.run(() => action({ action: 'retry', id: account.id }))
-                    }
-                  >
-                    {t('retry')}
-                  </Button>
-                )}
-                <IconButton
-                  path={mdiDotsHorizontal}
-                  label={t('accounts_actions', { name: accountName(account) || t('account') })}
-                  disabled={disabled}
-                  onClick={() => openMenu(account)}
-                />
+                    onClick={() => openMenu(account, 'remove')}
+                  />
+                </div>
               </div>
             ))}
           </div>
@@ -313,29 +337,24 @@ export default function Accounts() {
         </div>
       )}
       {data?.login.user_id && (
-        <details className="pt-2">
-          <summary className="cursor-pointer text-[13px] text-muted">
-            {t('accounts_profile')}
-          </summary>
-          <div className="space-y-4 pt-4">
-            <div className="flex items-center gap-2">
-              <AccountIdentity profile={data.login.profile} />
-              {data.login.profile?.login && (
-                <a
-                  className="icon-button"
-                  aria-label={t('open_twitch_profile')}
-                  title={t('open_twitch_profile')}
-                  href={`https://www.twitch.tv/${encodeURIComponent(data.login.profile.login)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <Icon path={mdiOpenInNew} className="mdi-icon" />
-                </a>
-              )}
-            </div>
-            <AccountBadges key={data.login.user_id} profile={data.login.profile} />
+        <div className="space-y-4 border-t border-divider pt-4">
+          <div className="flex items-center gap-2">
+            <AccountIdentity profile={data.login.profile} />
+            {data.login.profile?.login && (
+              <a
+                className="icon-button"
+                aria-label={t('open_twitch_profile')}
+                title={t('open_twitch_profile')}
+                href={`https://www.twitch.tv/${encodeURIComponent(data.login.profile.login)}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Icon path={mdiOpenInNew} className="mdi-icon" />
+              </a>
+            )}
           </div>
-        </details>
+          <AccountBadges key={data.login.user_id} profile={data.login.profile} />
+        </div>
       )}
       <Dialog
         open={!!menu}
@@ -349,90 +368,83 @@ export default function Accounts() {
       >
         {menu && (
           <div className="space-y-4">
-            {!operation ? (
-              <div className="grid gap-2">
-                <Button onClick={() => setOperation('rename')}>{t('accounts_rename')}</Button>
-                {menu.connected && (
-                  <Button onClick={() => setOperation('sign_out')}>{t('twitch_logout')}</Button>
-                )}
-                <Button onClick={() => setOperation('remove')}>{t('accounts_remove')}</Button>
-              </div>
+            {operation === 'rename' ? (
+              <Field
+                label={t('accounts_label')}
+                detail={t('accounts_label_help')}
+                help={!validAccountLabel(label) ? t('accounts_label_invalid') : undefined}
+              >
+                <Input
+                  value={label}
+                  maxLength={100}
+                  aria-invalid={!validAccountLabel(label)}
+                  onChange={(event) => setLabel(event.target.value)}
+                />
+              </Field>
             ) : (
-              <>
-                {operation === 'rename' ? (
-                  <Field
-                    label={t('accounts_label')}
-                    help={t(
-                      validAccountLabel(label) ? 'accounts_label_help' : 'accounts_label_invalid',
-                    )}
-                  >
-                    <Input
-                      value={label}
-                      maxLength={100}
-                      aria-invalid={!validAccountLabel(label)}
-                      onChange={(event) => setLabel(event.target.value)}
-                    />
-                  </Field>
-                ) : (
-                  <p className="text-[13px] text-muted">
-                    {t(
-                      operation === 'associate'
-                        ? 'accounts_associate_help'
-                        : operation === 'sign_out'
-                          ? 'accounts_sign_out_help'
-                          : 'accounts_remove_help',
-                    )}
-                  </p>
+              <p className="text-[13px] text-muted">
+                {t(
+                  operation === 'associate'
+                    ? 'accounts_associate_help'
+                    : operation === 'sign_out'
+                      ? 'accounts_sign_out_help'
+                      : 'accounts_remove_help',
                 )}
-                {operation === 'associate' && (
-                  <Check
-                    label={t('accounts_associate_confirm')}
-                    checked={associate}
-                    onChange={setAssociate}
-                  />
-                )}
-                <div className="flex justify-end gap-2">
-                  <Button disabled={command.busy} onClick={() => setOperation(null)}>
-                    {t('cancel')}
-                  </Button>
-                  <Button
-                    primary
-                    disabled={
-                      command.busy ||
-                      (operation === 'associate' && !associate) ||
-                      (operation === 'rename' && !validAccountLabel(label))
-                    }
-                    onClick={() =>
-                      void (operation === 'associate'
-                        ? login(menu)
-                        : command.run(async () => {
-                            await action({
-                              action: operation,
-                              id: menu.id,
-                              ...(operation === 'rename' ? { label } : {}),
-                            });
-                            if (operation === 'remove' && menu.id === selected) {
-                              const next = accounts.find((account) => account.id !== menu.id);
-                              if (next) select(next.id);
-                            }
-                            setMenu(null);
-                            setOperation(null);
-                          }))
-                    }
-                  >
-                    {t(
-                      operation === 'remove'
-                        ? 'accounts_remove'
-                        : operation === 'sign_out'
-                          ? 'twitch_logout'
-                          : operation === 'associate'
-                            ? 'accounts_sign_in'
-                            : 'accounts_save',
-                    )}
-                  </Button>
-                </div>
-              </>
+              </p>
             )}
+            {operation === 'associate' && (
+              <Check
+                label={t('accounts_associate_confirm')}
+                checked={associate}
+                onChange={setAssociate}
+              />
+            )}
+            <div className="flex justify-end gap-2">
+              <Button
+                disabled={command.busy}
+                onClick={() => {
+                  setMenu(null);
+                  setOperation(null);
+                }}
+              >
+                {t('cancel')}
+              </Button>
+              <Button
+                primary
+                disabled={
+                  command.busy ||
+                  (operation === 'associate' && !associate) ||
+                  (operation === 'rename' && !validAccountLabel(label))
+                }
+                onClick={() =>
+                  void (operation === 'associate'
+                    ? login(menu)
+                    : command.run(async () => {
+                        await action({
+                          action: operation,
+                          id: menu.id,
+                          ...(operation === 'rename' ? { label } : {}),
+                        });
+                        if (operation === 'remove' && menu.id === selected) {
+                          const next = accounts.find((account) => account.id !== menu.id);
+                          if (next) select(next.id);
+                        }
+                        setMenu(null);
+                        setOperation(null);
+                      }))
+                }
+              >
+                {t(
+                  operation === 'remove'
+                    ? 'accounts_remove'
+                    : operation === 'sign_out'
+                      ? 'twitch_logout'
+                      : operation === 'associate'
+                        ? 'accounts_sign_in'
+                        : 'accounts_save',
+                )}
+              </Button>
+            </div>
             <ActionResult action={command} />
           </div>
         )}
@@ -445,8 +457,7 @@ export default function Accounts() {
         }}
       >
         <div className="space-y-4">
-          <p className="text-[13px] text-muted">{t('accounts_copy_help')}</p>
-          <Field label={t('accounts_copy_from')}>
+          <Field label={t('accounts_copy_from')} detail={t('accounts_copy_help')}>
             <select
               className="field"
               value={validSource ? copySource : ''}
