@@ -157,12 +157,16 @@ impl Connection {
             && (1..=1440).contains(&self.minimum_refresh_interval_minutes)
     }
     pub fn load(root: &Path, legacy: &Settings) -> Result<Self> {
-        let value = read_json::<Self>(&root.join("connection.json"))?
-            .unwrap_or_else(|| Self::from_settings(legacy));
+        let saved = read_json::<Self>(&root.join("connection.json"))?;
+        let value = saved.clone().unwrap_or_else(|| Self::from_settings(legacy));
         ensure!(
             value.valid(),
             "invalid connection settings; original file preserved"
         );
+        // Isolate later primary-profile damage without requiring a manual Connection save.
+        if saved.is_none() {
+            value.save(root)?;
+        }
         Ok(value)
     }
     pub fn save(&self, root: &Path) -> Result<()> {

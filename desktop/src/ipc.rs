@@ -134,11 +134,11 @@ impl Request {
                 ));
             }
             Self::AccountAction(request) => {
-                return app
-                    .accounts()
-                    .ok_or(AppError::Unavailable)?
-                    .request(*request)
-                    .await;
+                let accounts = app.accounts().ok_or(AppError::Unavailable)?;
+                let result = accounts.request(*request).await?;
+                #[cfg(feature = "desktop-fixture")]
+                crate::fixture::pending_workers(&accounts).await;
+                return Ok(result);
             }
             Self::Connection => {
                 return Ok(app
@@ -301,6 +301,8 @@ pub async fn state_close(
         && let Some(value) = slot.take()
     {
         value.cancel.cancel();
+        *state.selected.write().unwrap() = None;
+        state.selected_changed.notify_one();
     }
     Ok(())
 }

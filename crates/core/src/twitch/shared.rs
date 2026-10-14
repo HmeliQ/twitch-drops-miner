@@ -82,6 +82,88 @@ mod tests {
         drop(held);
         assert_eq!(discovery.concurrent.available_permits(), 4);
     }
+
+    #[tokio::test]
+    async fn twenty_accounts_send_independent_watch_and_progress_requests_during_discovery_saturation()
+     {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/gql"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                serde_json::json!({"data":{"currentUser":{"dropCurrentSession":null}}}),
+            ))
+            .expect(20)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(20)
+            .mount(&server)
+            .await;
+        let shared = SharedNetwork::new(CancellationToken::new());
+        let cancel = CancellationToken::new();
+        let mut held = vec![];
+        for _ in 0..4 {
+            held.push(shared.discovery.acquire(&cancel).await.unwrap());
+        }
+        let start = Instant::now();
+        let mut workers = vec![];
+        for user in 1..=20 {
+            let mut http = super::super::tests::http(&server);
+            // Give the unused OAuth endpoint a distinct origin, as in production.
+            http.endpoints.oauth = Url::parse("http://127.0.0.1:1").unwrap();
+            http.shared = Some(shared.clone());
+            let mut session = serde_json::to_value(super::super::tests::session()).unwrap();
+            session["user_id"] = serde_json::json!(user);
+            session["access_token"] = serde_json::json!(format!("fixture-{user}"));
+            let session = serde_json::from_value(session).unwrap();
+            let mut channel = crate::domain::Channel::offline(
+                crate::domain::ChannelIdentity {
+                    id: user,
+                    login: format!("channel{user}"),
+                    name: format!("Channel {user}"),
+                },
+                false,
+            );
+            channel.broadcast_id = Some(format!("broadcast{user}"));
+            channel.beacon_url = Some(http.endpoints.web.clone());
+            let client = TwitchClient::new(Arc::new(http), &session);
+            workers.push(tokio::spawn(async move {
+                assert!(
+                    client
+                        .send_watch(&mut channel, chrono::Utc::now())
+                        .await
+                        .unwrap()
+                );
+                assert_eq!(client.current_drop(user).await.unwrap(), None);
+            }));
+        }
+        tokio::time::timeout(Duration::from_secs(12), async {
+            for worker in workers {
+                worker.await.unwrap();
+            }
+        })
+        .await
+        .expect("watch traffic must not wait for saturated discovery");
+        assert!(start.elapsed() < Duration::from_secs(12));
+        let requests = server.received_requests().await.unwrap();
+        let credentials: std::collections::HashSet<_> = requests
+            .iter()
+            .filter(|r| r.url.path() == "/gql")
+            .map(|r| {
+                r.headers
+                    .get("authorization")
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_owned()
+            })
+            .collect();
+        assert_eq!(credentials.len(), 20);
+        drop(held);
+        shared.shutdown().await;
+    }
 }
 
 impl Lane {

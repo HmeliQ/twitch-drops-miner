@@ -1,4 +1,6 @@
 mod api;
+#[cfg(feature = "dashboard-fixture")]
+mod fixture;
 mod login;
 mod store;
 #[cfg(test)]
@@ -67,6 +69,7 @@ impl Error {
 #[derive(Clone, Serialize, PartialEq)]
 pub struct Summary {
     pub id: String,
+    pub instance: Option<String>,
     pub label: String,
     pub user_id: Option<u64>,
     pub name: String,
@@ -123,16 +126,28 @@ impl AccountManager {
     pub fn open(directory: PathBuf) -> anyhow::Result<(Arc<Self>, mpsc::Receiver<CommandRequest>)> {
         let data = Arc::new(DataDirectory::open(directory)?);
         let registry = Registry::load(&data.path)?;
-        let connection = Connection::load(&data.path, &data.settings()?)?;
+        let legacy = data.settings();
+        // Without the shared file, unreadable legacy proxy settings cannot safely become defaults.
+        let (settings, primary_failed) = match legacy {
+            Ok(settings) => (settings, false),
+            Err(error) if !data.path.join("connection.json").exists() => return Err(error),
+            Err(_) => (Settings::default(), true),
+        };
+        let connection = Connection::load(&data.path, &settings)?;
         let telegram = Arc::new(Telegram::open(&data.path)?);
-        let (primary, commands) = Application::open_account(
+        let (primary, commands) = Application::with_account_settings(
             data.clone(),
             PRIMARY.into(),
             telegram.clone(),
             Some(&connection),
+            settings,
         )?;
         let mut entries = BTreeMap::new();
         let mut failures = std::collections::HashSet::new();
+        if primary_failed {
+            primary.shutdown.cancel();
+            failures.insert(PRIMARY.to_owned());
+        }
         entries.insert(
             PRIMARY.into(),
             Entry {
@@ -222,7 +237,9 @@ impl AccountManager {
             return;
         }
         let mut entries = self.entries.write().await;
-        entries.get_mut(PRIMARY).expect("original account").commands = Some(commands);
+        if !self.primary.shutdown.is_cancelled() {
+            entries.get_mut(PRIMARY).expect("original account").commands = Some(commands);
+        }
         for (index, entry) in entries.values_mut().enumerate() {
             self.start_entry(entry, std::time::Duration::from_millis(index as u64 * 750));
         }
@@ -366,6 +383,7 @@ impl AccountManager {
             let Some(app) = apps.get(&account.id) else {
                 accounts.push(Summary {
                     id: account.id.clone(),
+                    instance: None,
                     label: account.label.clone(),
                     user_id: account.user_id,
                     name: if account.label.is_empty() {
@@ -398,6 +416,7 @@ impl AccountManager {
             };
             accounts.push(Summary {
                 id: account.id.clone(),
+                instance: Some(snapshot.instance.clone()),
                 label: account.label.clone(),
                 user_id: account.user_id,
                 name,
@@ -484,6 +503,11 @@ impl AccountManager {
 
     pub async fn shutdown(&self) {
         self.shutdown.cancel();
+        for entry in self.entries.read().await.values() {
+            entry.app.shutdown.cancel();
+        }
+        // Close acceptance before the final drain, including writes already waiting for their turn.
+        let _permit = self.operations.acquire().await;
         for entry in self.entries.read().await.values() {
             entry.app.shutdown.cancel();
         }

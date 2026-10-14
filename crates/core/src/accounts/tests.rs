@@ -379,3 +379,238 @@ fn corrupt_or_unsupported_registry_is_preserved() {
         );
     }
 }
+
+fn stored_profiles(directory: &std::path::Path) -> String {
+    let id = "00000000000000000000000000000001".to_owned();
+    let secondary = directory.join("accounts").join(&id);
+    std::fs::create_dir_all(&secondary).unwrap();
+    session(42).save(directory).unwrap();
+    session(73).save(&secondary).unwrap();
+    atomic_json(
+        &directory.join("connection.json"),
+        &Connection::from_settings(&Settings::default()),
+    )
+    .unwrap();
+    atomic_json(
+        &directory.join("accounts.json"),
+        &json!({"version":1,"accounts":[
+            {"id":"primary","user_id":42,"label":"","enabled":true,"removed":false},
+            {"id":id,"user_id":73,"label":"","enabled":true,"removed":false}
+        ]}),
+    )
+    .unwrap();
+    id
+}
+
+#[tokio::test]
+async fn removing_a_locked_unavailable_profile_cannot_delete_another_owners_credentials() {
+    let directory = tempfile::tempdir().unwrap();
+    let id = stored_profiles(directory.path());
+    let secondary = directory.path().join("accounts").join(&id);
+    let lease = DataDirectory::open(&secondary).unwrap();
+    let original = std::fs::read(secondary.join("twitch_session.json")).unwrap();
+    let (manager, commands) = AccountManager::open(directory.path().into()).unwrap();
+    mock_worker(&manager, manager.primary.clone(), commands);
+    assert!(matches!(
+        manager.request(Request::Remove { id: id.clone() }).await,
+        Err(AppError::Account(Error::Storage))
+    ));
+    assert_eq!(
+        std::fs::read(secondary.join("twitch_session.json")).unwrap(),
+        original
+    );
+    assert!(!manager.registry.lock().await.find(&id).unwrap().removed);
+    drop(lease);
+    manager.shutdown().await;
+}
+
+#[tokio::test]
+async fn repaired_removed_profile_can_be_readded_without_a_stale_failure_marker() {
+    let directory = tempfile::tempdir().unwrap();
+    let id = stored_profiles(directory.path());
+    let settings = directory
+        .path()
+        .join("accounts")
+        .join(&id)
+        .join("settings.json");
+    std::fs::write(&settings, "corrupt").unwrap();
+    let (manager, commands) = AccountManager::open(directory.path().into()).unwrap();
+    mock_worker(&manager, manager.primary.clone(), commands);
+    assert!(manager.account(&id).await.is_err());
+    manager
+        .request(Request::Remove { id: id.clone() })
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read_to_string(&settings).unwrap(), "corrupt");
+    atomic_json(&settings, &Settings::default()).unwrap();
+    assert_eq!(add(&manager, 73).await, id);
+    assert!(manager.account(&id).await.is_ok());
+    assert!(!manager.failures.read().await.contains(&id));
+    manager.shutdown().await;
+}
+
+#[tokio::test]
+async fn corrupt_primary_settings_are_isolated_when_shared_connection_is_known() {
+    let directory = tempfile::tempdir().unwrap();
+    let id = stored_profiles(directory.path());
+    std::fs::remove_file(directory.path().join("connection.json")).unwrap();
+    let legacy = Settings {
+        connection_quality: 5,
+        ..Settings::default()
+    };
+    atomic_json(&directory.path().join("settings.json"), &legacy).unwrap();
+    let (migrated, commands) = AccountManager::open(directory.path().into()).unwrap();
+    drop(commands);
+    assert!(directory.path().join("connection.json").exists());
+    migrated.shutdown().await;
+    drop(migrated);
+    std::fs::write(directory.path().join("settings.json"), "corrupt").unwrap();
+    let (manager, commands) = AccountManager::open(directory.path().into()).unwrap();
+    drop(commands);
+    assert!(manager.primary.shutdown.is_cancelled());
+    assert!(matches!(
+        manager.account(PRIMARY).await,
+        Err(Error::Storage)
+    ));
+    let secondary = manager.account(&id).await.unwrap();
+    assert_eq!(secondary.settings.read().await.connection_quality, 5);
+    let commands = manager
+        .entries
+        .write()
+        .await
+        .get_mut(&id)
+        .unwrap()
+        .commands
+        .take()
+        .unwrap();
+    mock_worker(&manager, secondary.clone(), commands);
+    let result = manager
+        .request(Request::Pause {
+            targets: vec![target(&manager, &id).await],
+            paused: true,
+        })
+        .await
+        .unwrap();
+    assert_eq!(result["results"][0]["ok"], true);
+    assert!(secondary.settings.read().await.mining_paused);
+    assert_eq!(
+        std::fs::read_to_string(directory.path().join("settings.json")).unwrap(),
+        "corrupt"
+    );
+    // A failed local proxy connection is ordinary feedback, not account shutdown.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    drop(listener);
+    assert_eq!(
+        manager
+            .primary
+            .verify_proxy(&format!("http://{address}"))
+            .await
+            .unwrap()["success"],
+        false
+    );
+    manager.shutdown().await;
+}
+
+#[tokio::test]
+async fn removing_an_account_invalidates_old_reauthentication_but_fresh_add_restores_it() {
+    let (_directory, manager) = manager().await;
+    let id = add(&manager, 73).await;
+    let attempt = verified(&manager, 73, Some(&id)).await;
+    let cancel = manager.login.lock().await.as_ref().unwrap().cancel.clone();
+    manager
+        .request(Request::Remove { id: id.clone() })
+        .await
+        .unwrap();
+    assert!(cancel.is_cancelled());
+    assert!(
+        manager
+            .request(Request::FinishLogin {
+                attempt,
+                label: String::new(),
+                copy_from: None,
+                copy_auto_claim: false,
+            })
+            .await
+            .is_err()
+    );
+    assert!(manager.registry.lock().await.find(&id).unwrap().removed);
+    assert_eq!(add(&manager, 73).await, id);
+    manager.shutdown().await;
+}
+
+#[tokio::test]
+async fn connection_changes_cancel_and_clear_pending_oauth_credentials() {
+    let (_directory, manager) = manager().await;
+    let attempt = verified(&manager, 73, None).await;
+    let cancel = manager.login.lock().await.as_ref().unwrap().cancel.clone();
+    let connection = manager.connection().await;
+    let mut values: Connection = serde_json::from_value(connection["values"].clone()).unwrap();
+    values.proxy = "http://127.0.0.1:9".into();
+    manager
+        .request(Request::Connection {
+            revision: connection["revision"].as_str().unwrap().into(),
+            values,
+        })
+        .await
+        .unwrap();
+    assert!(cancel.is_cancelled());
+    {
+        let pending = manager.login.lock().await;
+        let login = pending.as_ref().unwrap();
+        assert!(login.session.is_none());
+        assert!(login.view.code.is_none());
+        assert_eq!(
+            login.view.error.as_deref(),
+            Some("account_login_connection_changed")
+        );
+    }
+    assert!(
+        manager
+            .request(Request::FinishLogin {
+                attempt,
+                label: String::new(),
+                copy_from: None,
+                copy_auto_claim: false,
+            })
+            .await
+            .is_err()
+    );
+    assert_eq!(manager.registry.lock().await.accounts.len(), 1);
+    manager.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shutdown_closes_manager_write_acceptance_before_returning() {
+    let (directory, manager) = manager().await;
+    let gate = manager.operations.acquire().await.unwrap();
+    let owned = manager.clone();
+    let write = tokio::spawn(async move {
+        owned
+            .request(Request::Rename {
+                id: PRIMARY.into(),
+                label: "late write".into(),
+            })
+            .await
+    });
+    tokio::task::yield_now().await;
+    let owned = manager.clone();
+    let shutdown = tokio::spawn(async move { owned.shutdown().await });
+    manager.shutdown.cancelled().await;
+    assert!(!shutdown.is_finished());
+    drop(gate);
+    assert!(write.await.unwrap().is_err());
+    shutdown.await.unwrap();
+    let registry = Registry::load(directory.path()).unwrap();
+    assert_ne!(registry.find(PRIMARY).unwrap().label, "late write");
+    assert!(manager.writes.is_empty());
+    assert!(
+        manager
+            .request(Request::Rename {
+                id: PRIMARY.into(),
+                label: "after shutdown".into()
+            })
+            .await
+            .is_err()
+    );
+}

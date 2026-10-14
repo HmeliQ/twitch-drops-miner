@@ -311,6 +311,8 @@ pub fn run() {
             #[cfg(feature = "desktop-fixture")]
             fixture::smoke_tray_status,
             #[cfg(feature = "desktop-fixture")]
+            fixture::smoke_account_state,
+            #[cfg(feature = "desktop-fixture")]
             fixture::smoke_result
         ])
         .build(tauri::generate_context!())

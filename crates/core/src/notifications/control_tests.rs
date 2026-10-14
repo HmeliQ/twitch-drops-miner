@@ -285,7 +285,10 @@ async fn commands_save_only_the_requested_setting_and_use_confirmed_progress() {
         }
     });
     let session = session(&app);
-    let reply = session.execute(&app, Command::Status).await.unwrap();
+    let reply = session
+        .execute(&app, Command::Status, &app.notification_epoch())
+        .await
+        .unwrap();
     assert!(reply.lines().any(|line| line == "12/100 minutes") && !reply.contains("99/"));
     assert!(!reply.contains("Drops Miner"));
     assert!(reply.contains("&lt;&amp;reward&gt;") && reply.contains("Manual channel"));
@@ -298,19 +301,30 @@ async fn commands_save_only_the_requested_setting_and_use_confirmed_progress() {
         .confirmed_at = None;
     assert!(
         session
-            .execute(&app, Command::Status)
+            .execute(&app, Command::Status, &app.notification_epoch())
             .await
             .unwrap()
             .contains("not confirmed")
     );
-    session.execute(&app, Command::Pause).await.unwrap();
+    session
+        .execute(&app, Command::Pause, &app.notification_epoch())
+        .await
+        .unwrap();
     assert!(app.settings.read().await.mining_paused);
     session
-        .execute(&app, Command::Mine("STRASSE".into()))
+        .execute(
+            &app,
+            Command::Mine("STRASSE".into()),
+            &app.notification_epoch(),
+        )
         .await
         .unwrap();
     session
-        .execute(&app, Command::Mine("straße".into()))
+        .execute(
+            &app,
+            Command::Mine("straße".into()),
+            &app.notification_epoch(),
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -321,12 +335,19 @@ async fn commands_save_only_the_requested_setting_and_use_confirmed_progress() {
     assert!(app.settings.read().await.mining_paused);
     assert!(
         session
-            .execute(&app, Command::Mine("unknown".into()))
+            .execute(
+                &app,
+                Command::Mine("unknown".into()),
+                &app.notification_epoch()
+            )
             .await
             .unwrap()
             .contains("not found")
     );
-    session.execute(&app, Command::Resume).await.unwrap();
+    session
+        .execute(&app, Command::Resume, &app.notification_epoch())
+        .await
+        .unwrap();
     let disk: Value =
         serde_json::from_slice(&std::fs::read(dir.path().join("settings.json")).unwrap()).unwrap();
     assert_eq!(disk["mining_paused"], false);
@@ -342,7 +363,8 @@ async fn logout_and_reconfiguration_fence_queued_and_stale_commands() {
     let (_dir, app, _commands) = application(&server).await;
     let old = session(&app);
     let slot = app.settings_slot.acquire().await.unwrap();
-    let execute = old.execute(&app, Command::Pause);
+    let account_cancel = app.notification_epoch();
+    let execute = old.execute(&app, Command::Pause, &account_cancel);
     tokio::pin!(execute);
     tokio::select! { result = &mut execute => panic!("unexpected {result:?}"), _ = tokio::time::sleep(Duration::from_millis(20)) => {} }
     app.telegram.cancel_pending();
@@ -353,20 +375,64 @@ async fn logout_and_reconfiguration_fence_queued_and_stale_commands() {
     drop(slot);
     app.telegram.save(configuration(&app.telegram)).unwrap();
     assert!(matches!(
-        old.execute(&app, Command::Pause).await,
+        old.execute(&app, Command::Pause, &app.notification_epoch())
+            .await,
         Err(AppError::Telegram(Error::Cancelled))
     ));
     assert!(!app.settings.read().await.mining_paused);
     app.snapshot.write().await.login.user_id = None;
     assert!(
         session(&app)
-            .execute(&app, Command::Resume)
+            .execute(&app, Command::Resume, &app.notification_epoch())
             .await
             .unwrap()
             .contains("Connect your Twitch")
     );
     app.shutdown.cancel();
     app.drain_writes().await;
+}
+
+#[tokio::test]
+async fn managed_logout_fences_a_queued_command_without_disabling_the_shared_bot() {
+    let directory = tempfile::tempdir().unwrap();
+    let (manager, mut commands) =
+        crate::accounts::AccountManager::open(directory.path().into()).unwrap();
+    let app = manager.primary.clone();
+    app.telegram.save(configuration(&app.telegram)).unwrap();
+    app.snapshot.write().await.login.user_id = Some(42);
+    let owned = app.clone();
+    let worker = tokio::spawn(async move {
+        let request = commands.recv().await.unwrap();
+        assert!(matches!(request.command, crate::app::Command::Logout));
+        owned.cancel_notifications();
+        owned.snapshot.write().await.login.user_id = None;
+        let _ = request.complete.send(Ok(()));
+    });
+    let remote = session(&app);
+    let epoch = app.telegram.epoch();
+    let account_cancel = app.notification_epoch();
+    let slot = app.settings_slot.acquire().await.unwrap();
+    let pending = remote.execute(&app, Command::Pause, &account_cancel);
+    tokio::pin!(pending);
+    tokio::select! { result = &mut pending => panic!("unexpected {result:?}"), _ = tokio::time::sleep(Duration::from_millis(20)) => {} }
+    manager
+        .request(crate::accounts::Request::SignOut {
+            id: crate::accounts::PRIMARY.into(),
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        pending.await,
+        Err(AppError::Telegram(Error::Cancelled))
+    ));
+    drop(slot);
+    assert!(!app.settings.read().await.mining_paused);
+    assert_eq!(app.telegram.epoch(), epoch);
+    assert!(!remote.cancel.is_cancelled());
+    assert!(account_cancel.is_cancelled());
+    assert!(!app.notification_epoch().is_cancelled());
+    worker.await.unwrap();
+    manager.shutdown().await;
 }
 
 #[tokio::test]

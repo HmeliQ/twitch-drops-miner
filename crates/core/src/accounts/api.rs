@@ -78,6 +78,9 @@ impl AccountManager {
         self.writes
             .spawn(async move {
                 let _permit = permit;
+                if manager.shutdown.is_cancelled() {
+                    return Err(Error::ShuttingDown.into());
+                }
                 let result = manager.execute(request).await;
                 manager.publish().await;
                 result
@@ -96,10 +99,19 @@ impl AccountManager {
                 .await
                 .map_err(Into::into),
             Request::ConfirmLogin { attempt } => {
+                #[cfg(feature = "dashboard-fixture")]
+                if self.offline.load(std::sync::atomic::Ordering::Acquire) {
+                    self.fixture_confirm(&attempt).await?;
+                    return Ok(json!({}));
+                }
                 let login = self.login.lock().await;
                 let login = login
                     .as_ref()
-                    .filter(|a| a.view.id == attempt)
+                    .filter(|a| {
+                        a.view.id == attempt
+                            && !a.cancel.is_cancelled()
+                            && a.expires > tokio::time::Instant::now()
+                    })
                     .ok_or(Error::Expired)?;
                 login.confirmed.notify_one();
                 Ok(json!({}))
@@ -134,6 +146,8 @@ impl AccountManager {
             }
             Request::SignOut { id } => {
                 let app = self.account(&id).await?;
+                self.invalidate_login(Some(&id), "account_login_cancelled")
+                    .await;
                 app.command(Command::Logout).await?;
                 Ok(json!({}))
             }
@@ -148,6 +162,8 @@ impl AccountManager {
                 {
                     return Err(Error::NotFound.into());
                 }
+                self.invalidate_login(Some(&id), "account_login_cancelled")
+                    .await;
                 let app = self
                     .entries
                     .read()
@@ -173,13 +189,15 @@ impl AccountManager {
                             }
                         }
                     }
-                    let path = if id == PRIMARY {
-                        self.primary.data.path.clone()
-                    } else {
-                        self.primary.data.path.join("accounts").join(&id)
+                    let data = match &app {
+                        Some(app) => app.data.clone(),
+                        None => Arc::new(
+                            DataDirectory::open(self.primary.data.path.join("accounts").join(&id))
+                                .map_err(|_| Error::Storage)?,
+                        ),
                     };
                     tokio::task::spawn_blocking(move || {
-                        crate::twitch::oauth::Session::remove(&path)
+                        crate::twitch::oauth::Session::remove(&data.path)
                     })
                     .await
                     .map_err(|_| Error::Storage)?
@@ -286,6 +304,8 @@ impl AccountManager {
                     .map_err(|_| Error::Storage)?
                     .map_err(|_| Error::Storage)?;
                 *self.connection.write().await = (values.clone(), next_revision);
+                self.invalidate_login(None, "account_login_connection_changed")
+                    .await;
                 self.network.invalidate().await;
                 let apps: Vec<_> = self
                     .entries

@@ -334,28 +334,15 @@ impl Session {
         }
     }
 
-    async fn execute(&self, app: &Arc<Application>, command: Command) -> Result<String, AppError> {
+    async fn execute(
+        &self,
+        app: &Arc<Application>,
+        command: Command,
+        account_cancel: &CancellationToken,
+    ) -> Result<String, AppError> {
         if matches!(command, Command::Help | Command::Accounts) {
             return Ok(text("help", &[]));
         }
-        let (app, name) = if let Some(accounts) = app.accounts() {
-            let Ok(selected) = accounts.telegram_account().await else {
-                return Ok(text("choose_account", &[]));
-            };
-            let overview = accounts.overview().await;
-            let name = (overview.accounts.len() > 1)
-                .then(|| {
-                    overview
-                        .accounts
-                        .iter()
-                        .find(|a| a.id == selected.account_id)
-                        .map(|a| a.name.clone())
-                })
-                .flatten();
-            (selected, name)
-        } else {
-            (app.clone(), None)
-        };
         let operation = async {
             // Serialize acceptance with configuration saves; accepted settings writes remain owned.
             let _permit = app
@@ -420,14 +407,12 @@ impl Session {
             app.update_settings(patch).await?;
             Ok(reply)
         };
-        let result = tokio::select! { biased;
+        tokio::select! { biased;
+            _ = account_cancel.cancelled() => Err(Error::Cancelled.into()),
             _ = app.shutdown.cancelled() => Err(Error::Cancelled.into()),
             _ = self.cancel.cancelled() => Err(Error::Cancelled.into()),
             result = tokio::time::timeout(Duration::from_secs(15), operation) => result.unwrap_or(Err(AppError::Unavailable)),
-        };
-        result.map(|reply| {
-            name.map_or_else(|| reply.clone(), |name| format!("{}\n{reply}", html(&name)))
-        })
+        }
     }
 
     async fn poll(&self, app: &Arc<Application>) {
@@ -552,34 +537,70 @@ impl Session {
                             };
                             (command, markup)
                         };
-                        let reply = match if command == Command::Accounts {
-                            Ok(text("choose_account", &[]))
+                        let global = matches!(command, Command::Accounts | Command::Help);
+                        let target = if global {
+                            Some(app.clone())
+                        } else if let Some(accounts) = app.accounts() {
+                            accounts.telegram_account().await.ok()
                         } else {
-                            self.execute(app, command).await
-                        } {
+                            Some(app.clone())
+                        };
+                        let account_cancel = target
+                            .as_ref()
+                            .filter(|_| !global)
+                            .map_or_else(|| shutdown.clone(), |target| target.notification_epoch());
+                        let name = if !global
+                            && let (Some(accounts), Some(target)) = (app.accounts(), &target)
+                        {
+                            let overview = accounts.overview().await;
+                            (overview.accounts.len() > 1)
+                                .then(|| {
+                                    overview
+                                        .accounts
+                                        .iter()
+                                        .find(|account| account.id == target.account_id)
+                                        .map(|account| account.name.clone())
+                                })
+                                .flatten()
+                        } else {
+                            None
+                        };
+                        let result = match (command, &target) {
+                            (Command::Accounts, _) | (_, None) => Ok(text("choose_account", &[])),
+                            (command, Some(target)) => {
+                                self.execute(target, command, &account_cancel).await
+                            }
+                        };
+                        let reply = match result {
                             Ok(reply) => reply,
-                            Err(AppError::Telegram(Error::Cancelled))
-                                if self.cancel.is_cancelled() || shutdown.is_cancelled() =>
-                            {
-                                return;
+                            Err(AppError::Telegram(Error::Cancelled)) => {
+                                if self.cancel.is_cancelled() || shutdown.is_cancelled() {
+                                    return;
+                                }
+                                continue;
                             }
                             Err(AppError::SettingsConflict) => text("conflict", &[]),
                             Err(_) => text("failed", &[]),
                         };
+                        let reply = name.map_or_else(
+                            || reply.clone(),
+                            |name| format!("{}\n{reply}", html(&name)),
+                        );
                         let proxy = app.connection_proxy().await;
-                        let sent = app
-                            .telegram
-                            .send(
-                                self.epoch,
-                                &reply,
-                                &proxy,
-                                &shutdown,
-                                markup
-                                    .as_ref()
-                                    .map_or(MessageKind::Reply, MessageKind::Keyboard),
-                                None,
-                            )
-                            .await;
+                        let delivery = app.telegram.send(
+                            self.epoch,
+                            &reply,
+                            &proxy,
+                            &shutdown,
+                            markup
+                                .as_ref()
+                                .map_or(MessageKind::Reply, MessageKind::Keyboard),
+                            None,
+                        );
+                        let sent = tokio::select! { biased;
+                            _ = account_cancel.cancelled() => Err(Error::Cancelled),
+                            result = delivery => result,
+                        };
                         super::report(app, sent).await;
                     }
                     if bootstrap {

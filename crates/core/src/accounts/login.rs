@@ -34,21 +34,37 @@ pub(super) struct Attempt {
 }
 
 impl AccountManager {
+    pub(super) async fn invalidate_login(&self, target: Option<&str>, reason: &str) {
+        let mut pending = self.login.lock().await;
+        if let Some(attempt) = pending
+            .as_mut()
+            .filter(|a| target.is_none() || a.view.target.as_deref() == target)
+        {
+            attempt.cancel.cancel();
+            attempt.session = None;
+            attempt.profile = None;
+            attempt.view.code = None;
+            attempt.view.user_id = None;
+            attempt.view.name = None;
+            attempt.view.avatar_url = None;
+            attempt.view.error = Some(reason.into());
+        }
+    }
     pub(super) async fn start_login(
         self: &Arc<Self>,
         target: Option<String>,
         associate_existing: bool,
     ) -> Result<Value, Error> {
-        #[cfg(feature = "dashboard-fixture")]
-        if self.offline.load(std::sync::atomic::Ordering::Acquire) {
-            return Err(Error::Invalid);
-        }
         if let Some(id) = &target {
             self.account(id).await?;
             let registry = self.registry.lock().await;
             if registry.find(id).is_some_and(|a| a.unassigned) && !associate_existing {
                 return Err(Error::Identity);
             }
+        }
+        #[cfg(feature = "dashboard-fixture")]
+        if self.offline.load(std::sync::atomic::Ordering::Acquire) {
+            return self.fixture_login(target).await;
         }
         let mut pending = self.login.lock().await;
         if pending
@@ -87,7 +103,7 @@ impl AccountManager {
             let result = tokio::time::timeout_at(expires, owned.authorize(&attempt_id, cancel.clone(), confirmed)).await.unwrap_or(Err(TwitchError::Expired));
             {
                 let mut pending = owned.login.lock().await;
-                if let Some(attempt) = pending.as_mut().filter(|a| a.view.id == attempt_id) {
+                if let Some(attempt) = pending.as_mut().filter(|a| a.view.id == attempt_id && !a.cancel.is_cancelled()) {
                     match result {
                         Ok((session, profile)) => {
                             attempt.view.user_id = Some(session.user_id);
@@ -140,7 +156,7 @@ impl AccountManager {
             let mut pending = self.login.lock().await;
             let attempt = pending
                 .as_mut()
-                .filter(|a| a.view.id == id)
+                .filter(|a| a.view.id == id && !a.cancel.is_cancelled())
                 .ok_or(TwitchError::Cancelled)?;
             attempt.view.code = Some(login.code.clone());
         }
@@ -164,7 +180,9 @@ impl AccountManager {
             let pending = self.login.lock().await;
             let attempt = pending
                 .as_ref()
-                .filter(|a| a.view.id == id && a.expires > Instant::now())
+                .filter(|a| {
+                    a.view.id == id && a.expires > Instant::now() && !a.cancel.is_cancelled()
+                })
                 .ok_or(Error::Expired)?;
             (
                 attempt.session.clone().ok_or(Error::Required)?,
@@ -175,6 +193,9 @@ impl AccountManager {
         let mut registry = self.registry.lock().await.clone();
         if let Some(target) = &target {
             let account = registry.find(target).ok_or(Error::NotFound)?;
+            if account.removed {
+                return Err(Error::NotFound.into());
+            }
             if account.user_id.is_some_and(|user| user != session.user_id) {
                 return Err(Error::Identity.into());
             }
@@ -307,6 +328,7 @@ impl AccountManager {
         if let Some(attempt) = self.login.lock().await.take() {
             attempt.cancel.cancel();
         }
+        self.failures.write().await.remove(&account_id);
         Ok(json!({"id":account_id,"existing":false}))
     }
 }

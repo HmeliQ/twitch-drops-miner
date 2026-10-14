@@ -120,7 +120,12 @@ async fn account_action(
     State(app): State<Arc<App>>,
     request: Request,
 ) -> Result<Json<Value>, ApiError> {
-    Ok(Json(app.accounts.request(document(request).await?).await?))
+    let result = app.accounts.request(document(request).await?).await?;
+    #[cfg(feature = "dashboard-fixture")]
+    if app.fixture {
+        crate::fixture::pending_workers(&app).await;
+    }
+    Ok(Json(result))
 }
 async fn connection(State(app): State<Arc<App>>) -> Json<Value> {
     Json(app.accounts.connection().await)

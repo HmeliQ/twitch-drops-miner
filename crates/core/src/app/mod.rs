@@ -80,7 +80,17 @@ impl Application {
         telegram: Arc<crate::notifications::Telegram>,
         connection: Option<&crate::accounts::Connection>,
     ) -> Result<(Arc<Self>, mpsc::Receiver<CommandRequest>)> {
-        let mut settings = data.settings()?;
+        let settings = data.settings()?;
+        Self::with_account_settings(data, account_id, telegram, connection, settings)
+    }
+
+    pub(crate) fn with_account_settings(
+        data: Arc<DataDirectory>,
+        account_id: String,
+        telegram: Arc<crate::notifications::Telegram>,
+        connection: Option<&crate::accounts::Connection>,
+        mut settings: Settings,
+    ) -> Result<(Arc<Self>, mpsc::Receiver<CommandRequest>)> {
         if let Some(connection) = connection {
             connection.apply(&mut settings);
         }
@@ -137,6 +147,10 @@ impl Application {
         if self.accounts.get().is_none() {
             self.telegram.cancel_pending();
         }
+    }
+
+    pub(crate) fn notification_epoch(&self) -> CancellationToken {
+        self.notification_cancel.lock().unwrap().clone()
     }
 
     pub(crate) fn process_cancel(&self) -> CancellationToken {

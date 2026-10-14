@@ -222,9 +222,10 @@ impl Application {
             .timeout(Duration::from_secs(10))
             .build()
             .map_err(|_| AppError::Unavailable)?;
+        let shutdown = self.process_cancel();
         let response = tokio::select! {
             biased;
-            _ = self.shutdown.cancelled() => return Err(AppError::ShuttingDown),
+            _ = shutdown.cancelled() => return Err(AppError::ShuttingDown),
             response = client.get("https://www.twitch.tv").send() => response,
         };
         Ok(match response {
