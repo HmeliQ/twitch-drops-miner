@@ -13,7 +13,7 @@
 Choose your games in the app or web dashboard, and the miner watches eligible channels and
 claims your drops. It runs on your own hardware and can mine up to 20 of your Twitch accounts at once.
 
-![Drops Miner dashboard with a Twitch profile and badge, Fortnite reward progress, channels and queued campaigns](.github/assets/dashboard-mining.png)
+![Drops Miner on desktop and mobile with account switching, reward progress, channels and queued campaigns](.github/assets/dashboard-mining.webp)
 
 [Quick start](#quick-start) · [Dashboard](#using-the-dashboard) · [Updating](#updating) · [Troubleshooting](#troubleshooting)
 
