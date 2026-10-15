@@ -95,21 +95,22 @@ function Shell({ auth, onLogout }: { auth: AuthStatus; onLogout: () => Promise<v
         {t('skip_content')}
       </a>
       <aside className="app-sidebar">
-        <div className="brand-row flex shrink-0 items-center px-4">
+        <div className="brand-row flex min-w-0 shrink-0 items-center gap-2 px-4">
           <NavLink
             to="/"
-            className="flex items-center gap-2 whitespace-nowrap text-base font-semibold tracking-tight"
+            aria-label="Drops Miner"
+            className="flex shrink-0 items-center gap-2 whitespace-nowrap text-base font-semibold tracking-tight"
           >
             <img
               src={logo}
               alt=""
               width={31}
               height={40}
-              className="h-10 w-[31px] shrink-0 object-contain"
+              className="brand-logo h-10 w-[31px] shrink-0 object-contain"
             />
-            Drops Miner
+            <span className="brand-name">Drops Miner</span>
           </NavLink>
-          <div className="ms-auto lg:hidden">
+          <div className="ms-auto min-w-0 lg:hidden">
             <AccountSwitcher compact />
           </div>
         </div>

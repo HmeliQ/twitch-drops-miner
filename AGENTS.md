@@ -190,7 +190,11 @@ embed it and run without a build tool/runtime companion. Production builds never
   Selection does not restrict commands or tests. Configuration changes cancel pending alerts
   through the configuration epoch. Keep the selector beside the claim-alert switch.
 - The account switcher lives in the existing sidebar/compact header; management is in Settings >
-  Accounts. Switching keeps the current page and section; restore an account's filters and
+  Accounts. The compact header shows a 36px round avatar, equipped badges and the colored
+  name; retain the sidebar's 32px avatar. Truncate long names without shrinking the artwork,
+  and scope mobile logo sizing to the logo itself. Below 640px, a native update link may
+  replace the app-name text beside the logo to leave room for the account identity.
+  Switching keeps the current page and section; restore an account's filters and
   scroll only on that same page. Preserve account drafts and Up next disclosures. Keep IDs
   in multi-account navigation/deep links. Global Connection/Telegram drafts and in-flight saves
   survive switching; dashboard logout clears private drafts. Suspend unavailable subscriptions,

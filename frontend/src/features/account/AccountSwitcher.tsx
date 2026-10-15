@@ -41,27 +41,19 @@ export default function AccountSwitcher({ compact = false }: { compact?: boolean
     if (accounts.length <= 1) close();
   }, [accounts.length, close]);
   const current = accounts.find((account) => account.id === selected);
-  const triggerClass = compact
-    ? 'icon-button size-11 shrink-0'
-    : 'account-trigger mt-1 flex min-h-11 w-full min-w-0 items-center gap-2 rounded text-start';
+  const triggerClass = `account-trigger flex min-h-11 w-full min-w-0 items-center gap-2 rounded text-start ${compact ? '' : 'mt-1'}`;
   const identity = (
     <>
-      {!compact && current && data?.login.profile ? (
+      {current && data?.login.profile ? (
         <span className="min-w-0 flex-1">
-          <AccountIdentity
-            compact
-            profile={{
-              ...data.login.profile,
-              display_name: current.label || data.login.profile.display_name,
-            }}
-          />
+          <AccountIdentity compact profile={data.login.profile} name={current.label || undefined} />
         </span>
       ) : current ? (
-        <Art url={current.avatar_url} className="size-7! rounded-full!" />
+        <Art url={current.avatar_url} className="size-9! rounded-full! lg:size-8!" />
       ) : (
         <Icon path={mdiAccountMultipleOutline} className="mdi-icon" />
       )}
-      {!compact && !data?.login.profile && (
+      {!data?.login.profile && (
         <span className="min-w-0 flex-1 truncate">
           {current ? accountName(current) || t('account') : t('accounts')}
         </span>
