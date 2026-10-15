@@ -123,6 +123,25 @@ impl Application {
                 }
                 let result = owned
                     .change_settings(|current| {
+                        if owned.accounts.get().is_some() {
+                            let connection = serde_json::to_value(
+                                crate::accounts::Connection::from_settings(&current.values),
+                            )
+                            .map_err(|_| AppError::InvalidSettings)?;
+                            if [
+                                "proxy",
+                                "connection_quality",
+                                "minimum_refresh_interval_minutes",
+                            ]
+                            .iter()
+                            .any(|key| {
+                                patch.get(*key).is_some_and(|value| {
+                                    !value.is_null() && value != &connection[*key]
+                                })
+                            }) {
+                                return Err(AppError::InvalidSettings);
+                            }
+                        }
                         if patch.get("revision").is_some_and(|v| {
                             !v.is_null() && v.as_str() != Some(current.revision.as_str())
                         }) {
@@ -203,9 +222,10 @@ impl Application {
             .timeout(Duration::from_secs(10))
             .build()
             .map_err(|_| AppError::Unavailable)?;
+        let shutdown = self.process_cancel();
         let response = tokio::select! {
             biased;
-            _ = self.shutdown.cancelled() => return Err(AppError::ShuttingDown),
+            _ = shutdown.cancelled() => return Err(AppError::ShuttingDown),
             response = client.get("https://www.twitch.tv").send() => response,
         };
         Ok(match response {

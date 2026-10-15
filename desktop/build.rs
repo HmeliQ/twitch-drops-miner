@@ -14,6 +14,7 @@ fn main() {
             "state_close",
             "smoke_result",
             "smoke_tray_status",
+            "smoke_account_state",
         ]),
     ))
     .expect("desktop build configuration");

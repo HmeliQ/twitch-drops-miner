@@ -73,6 +73,8 @@ pub struct CommandRequest {
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error(transparent)]
+    Account(#[from] crate::accounts::Error),
+    #[error(transparent)]
     Telegram(#[from] crate::notifications::Error),
     #[error("invalid_request")]
     InvalidRequest,

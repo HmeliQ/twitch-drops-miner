@@ -151,12 +151,21 @@ pub async fn desktop_settings(
     })
 }
 
-pub fn install(app: &tauri::AppHandle) -> tauri::Result<MenuItem<tauri::Wry>> {
+pub struct TrayControls {
+    pause: MenuItem<tauri::Wry>,
+    pause_all: MenuItem<tauri::Wry>,
+    resume_all: MenuItem<tauri::Wry>,
+}
+
+pub fn install(app: &tauri::AppHandle) -> tauri::Result<TrayControls> {
     let label = |key: &str| message(&format!("gui.desktop.{key}"), &[]);
     let status = MenuItem::with_id(app, "status", "Drops Miner", false, None::<&str>)?;
     let status_separator = PredefinedMenuItem::separator(app)?;
     let show = MenuItem::with_id(app, "show", label("show"), true, None::<&str>)?;
     let pause = MenuItem::with_id(app, "pause", label("pause"), true, None::<&str>)?;
+    let pause_all = MenuItem::with_id(app, "pause_all", label("pause_all"), false, None::<&str>)?;
+    let resume_all =
+        MenuItem::with_id(app, "resume_all", label("resume_all"), false, None::<&str>)?;
     let update = MenuItem::with_id(app, "updates", label("check_updates"), true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", label("quit"), true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
@@ -167,12 +176,13 @@ pub fn install(app: &tauri::AppHandle) -> tauri::Result<MenuItem<tauri::Wry>> {
             &status_separator,
             &show,
             &pause,
+            &pause_all,
+            &resume_all,
             &update,
             &separator,
             &quit,
         ],
     )?;
-    let pause_action = pause.clone();
     TrayIconBuilder::with_id("main")
         .icon(tauri::image::Image::from_bytes(include_bytes!(
             "../icons/32x32.png"
@@ -199,20 +209,52 @@ pub fn install(app: &tauri::AppHandle) -> tauri::Result<MenuItem<tauri::Wry>> {
                 crate::show(app);
                 let _ = app.emit_to("main", "desktop-update-open", ());
             }
-            "pause" => {
+            "pause" | "pause_all" | "resume_all" => {
+                let state = app.state::<Desktop>();
+                let targets = state.tray_targets.read().unwrap();
+                let selected = state.selected.read().unwrap().clone();
+                let request = if event.id.as_ref() == "pause" {
+                    targets
+                        .iter()
+                        .find(|(target, _)| {
+                            selected.as_deref() == Some(&target.id)
+                                || selected.is_none() && targets.len() == 1
+                        })
+                        .map(
+                            |(target, paused)| twitch_drops_miner_core::accounts::Request::Pause {
+                                targets: vec![target.clone()],
+                                paused: !paused,
+                            },
+                        )
+                } else {
+                    let paused = event.id.as_ref() == "pause_all";
+                    let targets: Vec<_> = targets
+                        .iter()
+                        .filter(|(_, current)| *current != paused)
+                        .map(|(target, _)| target.clone())
+                        .collect();
+                    (!targets.is_empty()).then_some(
+                        twitch_drops_miner_core::accounts::Request::Pause { targets, paused },
+                    )
+                };
+                drop(targets);
+                let Some(request) = request else {
+                    return;
+                };
                 let app = app.clone();
-                let control = pause_action.clone();
                 app.clone().state::<Desktop>().spawn(async move {
                     let state = app.state::<Desktop>();
                     let Ok(_guard) = state.pause_action.try_lock() else {
                         return;
                     };
-                    let _ = control.set_enabled(false);
                     let result = async {
-                        let core = state.application().await?;
-                        let paused = core.settings.read().await.mining_paused;
-                        core.update_settings(serde_json::json!({"mining_paused":!paused}))
-                            .await?;
+                        let manager = state.accounts().await?;
+                        let result = manager.request(request).await?;
+                        if result["results"].as_array().is_some_and(|results| {
+                            results.iter().any(|result| result["ok"] != true)
+                        }) {
+                            return Err(AppError::Unavailable.into());
+                        }
                         Ok::<_, ipc::Error>(())
                     }
                     .await;
@@ -220,7 +262,6 @@ pub fn install(app: &tauri::AppHandle) -> tauri::Result<MenuItem<tauri::Wry>> {
                         crate::show(&app);
                         let _ = app.emit_to("main", "desktop-error", ());
                     }
-                    let _ = control.set_enabled(true);
                 });
             }
             _ => {}
@@ -230,42 +271,57 @@ pub fn install(app: &tauri::AppHandle) -> tauri::Result<MenuItem<tauri::Wry>> {
     app.state::<Desktop>()
         .tray_available
         .store(true, Ordering::SeqCst);
-    Ok(pause)
+    Ok(TrayControls {
+        pause,
+        pause_all,
+        resume_all,
+    })
 }
 
-pub fn observe(app: &tauri::AppHandle, pause: Option<MenuItem<tauri::Wry>>) {
+pub fn observe(app: &tauri::AppHandle, controls: Option<TrayControls>) {
     let app = app.clone();
     app.clone().state::<Desktop>().spawn(async move {
         let state = app.state::<Desktop>();
-        let Ok(core) = state.application().await else {
-            if let Some(pause) = pause { let _ = pause.set_enabled(false); }
+        let Ok(accounts) = state.accounts().await else {
+            if let Some(controls) = controls { let _ = controls.pause.set_enabled(false); }
             return;
         };
-        let mut changes = core.snapshot.subscribe();
-        let mut notifications = core.notifications.subscribe();
+        let mut changes = accounts.subscribe();
+        let mut notifications = accounts.notifications.subscribe();
         let awake = crate::power::start(&app);
         loop {
             let enabled = state.preferences.lock().await.keep_awake;
-            let snapshot = core.snapshot.read().await;
-            let paused = snapshot.settings.values.mining_paused;
+            let overview = accounts.overview().await;
+            let selected = state.selected.read().unwrap().clone();
+            let account = overview.accounts.iter().find(|account| selected.as_deref() == Some(&account.id) || selected.is_none() && overview.accounts.len() == 1);
+            *state.tray_targets.write().unwrap() = overview.accounts.iter().filter(|a| !a.unavailable)
+                .map(|a| (twitch_drops_miner_core::accounts::Target { id: a.id.clone(), revision: a.settings_revision.clone() }, a.paused)).collect();
             awake.send_if_modified(|desired| {
-                let next = crate::power::needed(enabled, &snapshot);
+                let next = crate::power::any_needed(enabled, &overview.accounts);
                 let changed = *desired != next;
                 *desired = next;
                 changed
             });
-            drop(snapshot);
-            if let Some(pause) = &pause {
-                let _ = pause.set_text(message(if paused { "gui.desktop.resume" } else { "gui.desktop.pause" }, &[]));
+            if let Some(controls) = &controls {
+                let paused = account.is_some_and(|a| a.paused);
+                let mut label = message(if paused { "gui.desktop.resume" } else { "gui.desktop.pause" }, &[]);
+                if overview.accounts.len() > 1 && let Some(account) = account {
+                    label = format!("{label}: {}", account.name.chars().take(40).collect::<String>());
+                }
+                let _ = controls.pause.set_text(label.replace('&', "&&"));
+                let _ = controls.pause.set_enabled(account.is_some_and(|a| !a.unavailable));
+                let _ = controls.pause_all.set_enabled(overview.accounts.len() > 1 && overview.accounts.iter().any(|a| !a.paused && !a.unavailable));
+                let _ = controls.resume_all.set_enabled(overview.accounts.len() > 1 && overview.accounts.iter().any(|a| a.paused && !a.unavailable));
             }
             tokio::select! {
                 biased;
                 _ = state.cancel.cancelled() => break,
-                _ = core.shutdown.cancelled() => {
-                    if let Some(pause) = &pause { let _ = pause.set_enabled(false); }
+                _ = accounts.shutdown.cancelled() => {
+                    if let Some(controls) = &controls { let _ = controls.pause.set_enabled(false); }
                     break;
                 },
                 _ = state.preferences_changed.notified() => {},
+                _ = state.selected_changed.notified() => {},
                 result = changes.changed() => if result.is_err() { break; },
                 result = notifications.recv() => match result {
                     Ok(notification) => if state.preferences.lock().await.notifications {

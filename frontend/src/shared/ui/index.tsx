@@ -9,6 +9,8 @@ import {
   type ReactNode,
   type ReactElement,
   type RefObject,
+  type Dispatch,
+  type SetStateAction,
 } from 'react';
 import {
   mdiClose,
@@ -275,35 +277,40 @@ export function Notice({ children, error = false }: { children: ReactNode; error
     </div>
   );
 }
-export function useAction() {
+export interface ActionState {
+  busy: boolean;
+  error: string;
+  success: string;
+}
+export function useAction(shared?: [ActionState, Dispatch<SetStateAction<ActionState>>]) {
   const t = useT();
   const pending = useRef(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const local = useState<ActionState>({ busy: false, error: '', success: '' });
+  const [state, setState] = shared ?? local;
+  const { busy, error, success } = state;
   async function run(action: () => Promise<unknown>, message = '') {
-    if (pending.current) return false;
+    if (pending.current || busy) return false;
     pending.current = true;
-    setBusy(true);
-    setError('');
-    setSuccess('');
+    setState({ busy: true, error: '', success: '' });
     try {
       await action();
-      setSuccess(message);
+      setState((value) => ({ ...value, success: message }));
       return true;
     } catch (error) {
-      setError(
+      const message =
         error instanceof ApiError && error.message === 'settings_conflict'
           ? t('settings_conflict')
-          : error instanceof ApiError &&
-              t(`gui.auth.${error.message}`) !== `gui.auth.${error.message}`
-            ? t(`gui.auth.${error.message}`)
-            : t('gui.auth.request_failed'),
-      );
+          : error instanceof ApiError && t(error.message) !== error.message
+            ? t(error.message)
+            : error instanceof ApiError &&
+                t(`gui.auth.${error.message}`) !== `gui.auth.${error.message}`
+              ? t(`gui.auth.${error.message}`)
+              : t('gui.auth.request_failed');
+      setState((value) => ({ ...value, error: message }));
       return false;
     } finally {
       pending.current = false;
-      setBusy(false);
+      setState((value) => ({ ...value, busy: false }));
     }
   }
   return {
@@ -312,8 +319,7 @@ export function useAction() {
     success,
     run,
     clear: () => {
-      setError('');
-      setSuccess('');
+      setState((value) => ({ ...value, error: '', success: '' }));
     },
   };
 }
@@ -335,11 +341,13 @@ export function Busy({ label }: { label: string }) {
 export function Dialog({
   open,
   title,
+  help,
   onClose,
   children,
 }: {
   open: boolean;
   title: string;
+  help?: string;
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -362,9 +370,12 @@ export function Dialog({
       className="m-auto w-[calc(100%_-_32px)] max-w-md rounded-md border border-divider bg-raised p-6 text-text shadow-xl backdrop:bg-black/65"
     >
       <div className="mb-4 flex items-center justify-between gap-4">
-        <h2 id={id} className="text-lg font-semibold">
-          {title}
-        </h2>
+        <div className="flex min-w-0 items-center gap-1">
+          <h2 id={id} className="text-lg font-semibold">
+            {title}
+          </h2>
+          {help && <HelpButton label={title} text={help} />}
+        </div>
         <IconButton path={mdiClose} label={t('close')} onClick={onClose} />
       </div>
       {children}

@@ -80,7 +80,7 @@
     await wait(async () => (await invoke('desktop_update')).phase === 'current', 'startup update check did not finish');
     const checked = await invoke('desktop_update');
     await invoke('plugin:event|emit', { event: 'desktop-update-open', payload: null });
-    const maintenance = () => document.getElementById('maintenance');
+    const maintenance = () => document.getElementById('settings-maintenance');
     await wait(() => maintenance() && !maintenance().hidden, 'tray updates did not open Maintenance');
     await wait(() => maintenance().textContent.includes("You're up to date."), 'offline updater status not rendered');
     await wait(async () => (await invoke('desktop_update')).revision > checked.revision, 'opening updates did not check again');
@@ -135,6 +135,26 @@
     }
     await publish('current', null);
     await wait(() => !indicator(), 'obsolete update indicator remains visible');
+    // Add a second profile through native IPC, then exercise viewed-account recovery.
+    const request = (kind, value, account) => invoke('app_request', { id: crypto.randomUUID(), request: { kind, ...(value === undefined ? {} : { value }) }, account });
+    const action = (value) => request('account_action', value);
+    const attempt = await action({ action: 'start_login', target: null, associate_existing: false });
+    await action({ action: 'confirm_login', attempt: attempt.attempt });
+    const added = await action({ action: 'finish_login', attempt: attempt.attempt, label: 'Secondary', copy_from: null, copy_auto_claim: false });
+    const primary = await request('settings', undefined, 'primary');
+    const second = await request('settings', undefined, added.id);
+    await request('save_settings', { revision: second.revision, mining_paused: true }, added.id);
+    if ((await request('settings', undefined, 'primary')).mining_paused !== primary.mining_paused) throw new Error('account write changed primary');
+    await wait(() => document.querySelector('[aria-label="Switch account"]'), 'account switcher missing');
+    [...document.querySelectorAll('[aria-label="Switch account"]')].find(element => element.getBoundingClientRect().width > 0).click();
+    await wait(() => [...document.querySelectorAll('[aria-label="Switch account"] button')].some(button => button.textContent.includes('Secondary')), 'second account not in switcher');
+    [...document.querySelectorAll('[aria-label="Switch account"] button')].find(button => button.textContent.includes('Secondary')).click();
+    await wait(async () => await invoke('smoke_account_state') === added.id, 'native viewed account did not switch');
+    await invoke('smoke_account_state', { stop: added.id });
+    await wait(async () => await invoke('smoke_account_state') === null, 'unavailable account left old tray selection');
+    await action({ action: 'retry', id: added.id });
+    await wait(async () => await invoke('smoke_account_state') === added.id, 'recovered account did not reconnect');
+    await wait(() => document.title.startsWith('Secondary - '), 'account title did not recover');
     await invoke('smoke_result', { error: null });
   } catch (error) {
     await invoke('smoke_result', { error: String(error) });

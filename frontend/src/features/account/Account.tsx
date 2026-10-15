@@ -8,9 +8,11 @@ import { readableNameColor } from './profile';
 
 export default function AccountIdentity({
   profile,
+  name,
   compact = false,
 }: {
   profile?: AccountProfile;
+  name?: string;
   compact?: boolean;
 }) {
   const t = useT();
@@ -37,13 +39,15 @@ export default function AccountIdentity({
           <Icon path={mdiAccountOutline} className="size-5" />
         </span>
       )}
-      <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+      <span
+        className={`flex min-w-0 items-center gap-x-1.5 gap-y-1 ${compact ? 'flex-nowrap' : 'flex-wrap'}`}
+      >
         {compact && badges}
         <span
           className="truncate font-semibold"
           style={{ color: readableNameColor(profile?.color ?? null) }}
         >
-          {profile?.display_name ?? t('account')}
+          {name || profile?.display_name || t('account')}
         </span>
         {!compact && badges}
       </span>

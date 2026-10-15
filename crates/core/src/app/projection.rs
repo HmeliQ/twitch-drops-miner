@@ -6,6 +6,7 @@ use crate::dto::*;
 /// A coalesced publication therefore never creates a false revision gap.
 #[derive(Serialize)]
 pub struct StatePatch {
+    pub account_id: String,
     pub protocol: u32,
     pub instance: String,
     pub base_revision: u64,
@@ -22,6 +23,7 @@ macro_rules! changes {
         impl StatePatch {
             pub fn between(previous: &Snapshot, next: &Snapshot) -> Self {
                 Self {
+                    account_id: next.account_id.clone(),
                     protocol: super::state::PROTOCOL,
                     instance: next.instance.clone(), base_revision: previous.revision,
                     revision: next.revision,

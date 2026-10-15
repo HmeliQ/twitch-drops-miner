@@ -11,12 +11,53 @@ fn incoming(id: i64, text: &str, date: i64) -> Value {
         "chat":{"id":42, "type":"private"}, "from":{"id":42, "is_bot":false}}})
 }
 
+#[test]
+fn account_picker_accepts_only_issued_fresh_private_owner_callbacks() {
+    let picker = Picker {
+        nonce: "0123456789abcdef".into(),
+        created: 2000,
+        accounts: vec!["primary".into()],
+    };
+    let update = json!({"update_id":1,"callback_query":{"id":"callback1","data":"0123456789abcdef:a:primary",
+        "from":{"id":42,"is_bot":false},"message":{"from":{"id":123,"is_bot":true},"chat":{"id":42,"type":"private"}}}});
+    assert!(
+        matches!(picker.callback(&update, 42, "123:token", 2001), Some((_, Selection::Account(id))) if id == "primary")
+    );
+    assert!(picker.callback(&update, 42, "123:token", 2121).is_none());
+    for (pointer, value) in [
+        ("/callback_query/from/id", json!(43)),
+        ("/callback_query/from/is_bot", json!(true)),
+        ("/callback_query/message/chat/id", json!(43)),
+        ("/callback_query/message/chat/type", json!("group")),
+        ("/callback_query/message/from/id", json!(999)),
+        ("/callback_query/message/forward_origin", json!({})),
+        ("/callback_query/data", json!("expired:a:primary")),
+        ("/callback_query/data", json!("0123456789abcdef:a:missing")),
+        ("/callback_query/data", json!("0123456789abcdef:p:999")),
+        ("/callback_query/inline_message_id", json!("inline")),
+    ] {
+        let mut invalid = update.clone();
+        let (parent, key) = pointer.rsplit_once('/').unwrap();
+        invalid
+            .pointer_mut(parent)
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .insert(key.into(), value);
+        assert!(
+            picker.callback(&invalid, 42, "123:token", 2001).is_none(),
+            "{pointer}"
+        );
+    }
+}
+
 fn configuration(service: &Telegram) -> Update {
     Update {
         revision: service.view().revision,
         enabled: false,
         remote_control: true,
         include_image: false,
+        notification_accounts: None,
         token: "123:control_test".into(),
         chat_id: "42".into(),
         remove: false,
@@ -42,7 +83,9 @@ async fn application(
 ) {
     let dir = tempfile::tempdir().unwrap();
     let (mut app, commands) = Application::open(dir.path().into()).unwrap();
-    Arc::get_mut(&mut app).unwrap().telegram.endpoint = server.uri();
+    Arc::get_mut(&mut Arc::get_mut(&mut app).unwrap().telegram)
+        .unwrap()
+        .endpoint = server.uri();
     app.telegram.save(configuration(&app.telegram)).unwrap();
     app.snapshot.write().await.login.user_id = Some(7);
     (dir, app, commands)
@@ -243,7 +286,10 @@ async fn commands_save_only_the_requested_setting_and_use_confirmed_progress() {
         }
     });
     let session = session(&app);
-    let reply = session.execute(&app, Command::Status).await.unwrap();
+    let reply = session
+        .execute(&app, Command::Status, &app.notification_epoch())
+        .await
+        .unwrap();
     assert!(reply.lines().any(|line| line == "12/100 minutes") && !reply.contains("99/"));
     assert!(!reply.contains("Drops Miner"));
     assert!(reply.contains("&lt;&amp;reward&gt;") && reply.contains("Manual channel"));
@@ -256,19 +302,30 @@ async fn commands_save_only_the_requested_setting_and_use_confirmed_progress() {
         .confirmed_at = None;
     assert!(
         session
-            .execute(&app, Command::Status)
+            .execute(&app, Command::Status, &app.notification_epoch())
             .await
             .unwrap()
             .contains("not confirmed")
     );
-    session.execute(&app, Command::Pause).await.unwrap();
+    session
+        .execute(&app, Command::Pause, &app.notification_epoch())
+        .await
+        .unwrap();
     assert!(app.settings.read().await.mining_paused);
     session
-        .execute(&app, Command::Mine("STRASSE".into()))
+        .execute(
+            &app,
+            Command::Mine("STRASSE".into()),
+            &app.notification_epoch(),
+        )
         .await
         .unwrap();
     session
-        .execute(&app, Command::Mine("straße".into()))
+        .execute(
+            &app,
+            Command::Mine("straße".into()),
+            &app.notification_epoch(),
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -279,12 +336,19 @@ async fn commands_save_only_the_requested_setting_and_use_confirmed_progress() {
     assert!(app.settings.read().await.mining_paused);
     assert!(
         session
-            .execute(&app, Command::Mine("unknown".into()))
+            .execute(
+                &app,
+                Command::Mine("unknown".into()),
+                &app.notification_epoch()
+            )
             .await
             .unwrap()
             .contains("not found")
     );
-    session.execute(&app, Command::Resume).await.unwrap();
+    session
+        .execute(&app, Command::Resume, &app.notification_epoch())
+        .await
+        .unwrap();
     let disk: Value =
         serde_json::from_slice(&std::fs::read(dir.path().join("settings.json")).unwrap()).unwrap();
     assert_eq!(disk["mining_paused"], false);
@@ -300,7 +364,8 @@ async fn logout_and_reconfiguration_fence_queued_and_stale_commands() {
     let (_dir, app, _commands) = application(&server).await;
     let old = session(&app);
     let slot = app.settings_slot.acquire().await.unwrap();
-    let execute = old.execute(&app, Command::Pause);
+    let account_cancel = app.notification_epoch();
+    let execute = old.execute(&app, Command::Pause, &account_cancel);
     tokio::pin!(execute);
     tokio::select! { result = &mut execute => panic!("unexpected {result:?}"), _ = tokio::time::sleep(Duration::from_millis(20)) => {} }
     app.telegram.cancel_pending();
@@ -311,20 +376,64 @@ async fn logout_and_reconfiguration_fence_queued_and_stale_commands() {
     drop(slot);
     app.telegram.save(configuration(&app.telegram)).unwrap();
     assert!(matches!(
-        old.execute(&app, Command::Pause).await,
+        old.execute(&app, Command::Pause, &app.notification_epoch())
+            .await,
         Err(AppError::Telegram(Error::Cancelled))
     ));
     assert!(!app.settings.read().await.mining_paused);
     app.snapshot.write().await.login.user_id = None;
     assert!(
         session(&app)
-            .execute(&app, Command::Resume)
+            .execute(&app, Command::Resume, &app.notification_epoch())
             .await
             .unwrap()
             .contains("Connect your Twitch")
     );
     app.shutdown.cancel();
     app.drain_writes().await;
+}
+
+#[tokio::test]
+async fn managed_logout_fences_a_queued_command_without_disabling_the_shared_bot() {
+    let directory = tempfile::tempdir().unwrap();
+    let (manager, mut commands) =
+        crate::accounts::AccountManager::open(directory.path().into()).unwrap();
+    let app = manager.primary.clone();
+    app.telegram.save(configuration(&app.telegram)).unwrap();
+    app.snapshot.write().await.login.user_id = Some(42);
+    let owned = app.clone();
+    let worker = tokio::spawn(async move {
+        let request = commands.recv().await.unwrap();
+        assert!(matches!(request.command, crate::app::Command::Logout));
+        owned.cancel_notifications();
+        owned.snapshot.write().await.login.user_id = None;
+        let _ = request.complete.send(Ok(()));
+    });
+    let remote = session(&app);
+    let epoch = app.telegram.epoch();
+    let account_cancel = app.notification_epoch();
+    let slot = app.settings_slot.acquire().await.unwrap();
+    let pending = remote.execute(&app, Command::Pause, &account_cancel);
+    tokio::pin!(pending);
+    tokio::select! { result = &mut pending => panic!("unexpected {result:?}"), _ = tokio::time::sleep(Duration::from_millis(20)) => {} }
+    manager
+        .request(crate::accounts::Request::SignOut {
+            id: crate::accounts::PRIMARY.into(),
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        pending.await,
+        Err(AppError::Telegram(Error::Cancelled))
+    ));
+    drop(slot);
+    assert!(!app.settings.read().await.mining_paused);
+    assert_eq!(app.telegram.epoch(), epoch);
+    assert!(!remote.cancel.is_cancelled());
+    assert!(account_cancel.is_cancelled());
+    assert!(!app.notification_epoch().is_cancelled());
+    worker.await.unwrap();
+    manager.shutdown().await;
 }
 
 #[tokio::test]
@@ -394,7 +503,10 @@ async fn polling_discards_backlog_deduplicates_and_replies_without_claim_alerts(
             assert_eq!(body["scope"], json!({"type":"chat","chat_id":"42"}));
         }
         if request.url.path().ends_with("getUpdates") {
-            assert_eq!(body["allowed_updates"], json!(["message"]));
+            assert_eq!(
+                body["allowed_updates"],
+                json!(["message", "callback_query"])
+            );
         }
     }
     app.shutdown.cancel();

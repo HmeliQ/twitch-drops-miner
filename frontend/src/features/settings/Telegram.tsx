@@ -1,7 +1,11 @@
-import { useEffect, useState } from 'react';
-import { mdiContentSave, mdiDeleteOutline, mdiOpenInNew } from '@mdi/js';
+import type { ActionState } from '../../shared/ui';
+import { useCallback, useEffect, useState } from 'react';
+import { mdiContentSave, mdiDeleteOutline, mdiOpenInNew, mdiChevronDown } from '@mdi/js';
 import { Icon } from '@mdi/react';
 import { ApiError, request } from '../../shared/lib/api';
+import { useAccounts, useSharedState } from '../../app/accounts';
+import AnchoredPopover from '../../shared/ui/AnchoredPopover';
+import { accountName } from '../account/AccountSwitcher';
 import { useT } from '../../shared/lib/i18n';
 import {
   ActionResult,
@@ -19,6 +23,7 @@ interface Configuration {
   enabled: boolean;
   remote_control: boolean;
   include_image: boolean;
+  notification_accounts: number[] | null;
   token_configured: boolean;
   chat_id: string;
   revision: string;
@@ -32,17 +37,42 @@ interface BotIdentity {
 
 export default function Telegram({ connected }: { connected: boolean }) {
   const t = useT();
-  const action = useAction();
-  const [saved, setSaved] = useState<Configuration>();
+  const { overview } = useAccounts();
+  const accounts = (overview?.accounts ?? []).filter((account) => account.user_id !== null);
+  const [selectedAccounts, setSelectedAccounts] = useSharedState<number[] | null>(
+    'telegram.accounts',
+    null,
+  );
+  const selectedCount = accounts.filter((account) =>
+    selectedAccounts?.includes(account.user_id!),
+  ).length;
+  const [accountsOpen, setAccountsOpen] = useState(false);
+  const closeAccounts = useCallback(() => setAccountsOpen(false), []);
+  const action = useAction(
+    useSharedState<ActionState>('telegram.action', { busy: false, error: '', success: '' }),
+  );
+  const [saved, setSaved] = useSharedState<Configuration | undefined>('telegram.saved', undefined);
   const [identity, setIdentity] = useState<BotIdentity>();
-  const [enabled, setEnabled] = useState(false);
-  const [remoteControl, setRemoteControl] = useState(false);
-  const [includeImage, setIncludeImage] = useState(false);
-  const [chat, setChat] = useState('');
-  const [token, setToken] = useState('');
+  const [enabled, setEnabled] = useSharedState('telegram.enabled', false);
+  const [remoteControl, setRemoteControl] = useSharedState('telegram.remote', false);
+  const [includeImage, setIncludeImage] = useSharedState('telegram.image', false);
+  const [chat, setChat] = useSharedState('telegram.chat', '');
+  const [token, setToken] = useSharedState('telegram.token', '');
   const [loadFailed, setLoadFailed] = useState(false);
   const [reload, setReload] = useState(0);
   useEffect(() => {
+    if (
+      action.busy ||
+      (saved &&
+        (enabled !== saved.enabled ||
+          remoteControl !== saved.remote_control ||
+          includeImage !== saved.include_image ||
+          JSON.stringify(selectedAccounts) !==
+            JSON.stringify(saved.notification_accounts ?? null) ||
+          chat !== saved.chat_id ||
+          token !== ''))
+    )
+      return;
     const controller = new AbortController();
     setSaved(undefined);
     setToken('');
@@ -54,6 +84,7 @@ export default function Telegram({ connected }: { connected: boolean }) {
         setEnabled(value.enabled);
         setRemoteControl(value.remote_control);
         setIncludeImage(value.include_image);
+        setSelectedAccounts(value.notification_accounts ?? null);
         setChat(value.chat_id);
       })
       .catch(() => {
@@ -77,6 +108,7 @@ export default function Telegram({ connected }: { connected: boolean }) {
     (enabled !== saved.enabled ||
       remoteControl !== saved.remote_control ||
       includeImage !== saved.include_image ||
+      JSON.stringify(selectedAccounts) !== JSON.stringify(saved.notification_accounts ?? null) ||
       chat !== saved.chat_id ||
       token !== '');
   async function save(remove = false) {
@@ -87,6 +119,7 @@ export default function Telegram({ connected }: { connected: boolean }) {
         enabled,
         remote_control: remoteControl,
         include_image: includeImage,
+        notification_accounts: selectedAccounts,
         chat_id: chat,
         token,
         remove,
@@ -99,15 +132,19 @@ export default function Telegram({ connected }: { connected: boolean }) {
       setEnabled(value.enabled);
       setRemoteControl(value.remote_control);
       setIncludeImage(value.include_image);
+      setSelectedAccounts(value.notification_accounts ?? null);
       setChat(value.chat_id);
       setToken('');
     });
   }
   return (
-    <section id="notifications" className="max-w-md space-y-4">
+    <section id="settings-notifications" className="max-w-md space-y-4">
       <div className="flex items-center gap-1">
         <h2 className="font-semibold">Telegram</h2>
-        <HelpButton label="Telegram" text={t('telegram_help')} />
+        <HelpButton
+          label="Telegram"
+          text={`${t('telegram_help')} ${t('accounts_telegram_help')} ${t('telegram_accounts_help')}`}
+        />
         {bot && (
           <a
             href={`https://t.me/${encodeURIComponent(bot.username)}`}
@@ -140,14 +177,76 @@ export default function Telegram({ connected }: { connected: boolean }) {
         >
           {saved.unreadable && <Notice error>{t('gui.auth.telegram_storage')}</Notice>}
           <fieldset disabled={!connected || action.busy || saved.unreadable} className="space-y-4">
-            <Check
-              label={t('telegram_enabled')}
-              checked={enabled}
-              onChange={(value) => {
-                action.clear();
-                setEnabled(value);
-              }}
-            />
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <Check
+                label={t('telegram_enabled')}
+                checked={enabled}
+                onChange={(value) => {
+                  action.clear();
+                  setEnabled(value);
+                }}
+              />
+              {enabled && (
+                <AnchoredPopover
+                  label={t('telegram_accounts')}
+                  icon={mdiChevronDown}
+                  open={accountsOpen}
+                  maxHeight={320}
+                  onToggle={() => setAccountsOpen(!accountsOpen)}
+                  onClose={closeAccounts}
+                  triggerClass="button min-w-0 text-xs"
+                  triggerContent={
+                    <>
+                      {selectedAccounts === null
+                        ? t('telegram_accounts_all')
+                        : selectedCount
+                          ? t(
+                              selectedCount === 1
+                                ? 'telegram_accounts_one'
+                                : 'telegram_accounts_count',
+                              { count: selectedCount },
+                            )
+                          : t('telegram_accounts_none')}
+                      <Icon path={mdiChevronDown} className="mdi-icon size-4!" />
+                    </>
+                  }
+                >
+                  <div className="shrink-0 border-b border-divider px-3 py-2">
+                    <Check
+                      label={t('telegram_accounts_all')}
+                      checked={selectedAccounts === null}
+                      onChange={(value) => {
+                        action.clear();
+                        setSelectedAccounts(value ? null : []);
+                      }}
+                    />
+                  </div>
+                  <div className="min-h-0 overflow-y-auto overscroll-contain p-3 space-y-2">
+                    {accounts.map((account) => (
+                      <Check
+                        key={account.id}
+                        label={accountName(account)}
+                        checked={
+                          selectedAccounts === null || selectedAccounts.includes(account.user_id!)
+                        }
+                        onChange={(value) => {
+                          action.clear();
+                          const ids = selectedAccounts ?? accounts.map((entry) => entry.user_id!);
+                          setSelectedAccounts(
+                            value
+                              ? [...new Set([...ids, account.user_id!])].sort((a, b) => a - b)
+                              : ids.filter((id) => id !== account.user_id),
+                          );
+                        }}
+                      />
+                    ))}
+                    {!accounts.length && (
+                      <p className="text-muted text-xs">{t('accounts_empty')}</p>
+                    )}
+                  </div>
+                </AnchoredPopover>
+              )}
+            </div>
             <Check
               label={t('telegram_include_image')}
               checked={includeImage}

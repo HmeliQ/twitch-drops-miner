@@ -37,6 +37,8 @@ use crate::app::{
 pub use crate::app::{Command, CommandRequest, message};
 
 pub struct WebState {
+    pub accounts: Arc<crate::accounts::AccountManager>,
+    pub shutdown: tokio_util::sync::CancellationToken,
     pub application: Arc<Application>,
     pub auth: Arc<WebAuth>,
     pub origin: DashboardOrigin,
@@ -61,10 +63,13 @@ impl WebState {
         directory: PathBuf,
         public_base_url: &str,
     ) -> Result<(Arc<Self>, mpsc::Receiver<CommandRequest>)> {
-        let (application, receiver) = Application::open(directory)?;
+        let (accounts, receiver) = crate::accounts::AccountManager::open(directory)?;
+        let application = accounts.primary.clone();
         let auth = Arc::new(WebAuth::open(&application.data.path)?);
         Ok((
             Arc::new(Self {
+                shutdown: accounts.shutdown.clone(),
+                accounts,
                 application,
                 sockets: SocketHub::new(auth.clone()),
                 auth,
@@ -81,14 +86,59 @@ impl WebState {
 #[derive(Debug)]
 pub struct ApiError(pub StatusCode, pub &'static str);
 
-async fn games(
+struct AccountApp(Arc<Application>);
+
+impl axum::extract::FromRequestParts<Arc<App>> for AccountApp {
+    type Rejection = ApiError;
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        state: &Arc<App>,
+    ) -> Result<Self, ApiError> {
+        let uri = parts
+            .extensions
+            .get::<axum::extract::OriginalUri>()
+            .map(|uri| &uri.0)
+            .unwrap_or(&parts.uri);
+        let result = if let Some(path) = uri.path().strip_prefix("/api/accounts/") {
+            state
+                .accounts
+                .account(path.split('/').next().unwrap_or_default())
+                .await
+        } else {
+            state.accounts.sole_account().await
+        };
+        result
+            .map(Self)
+            .map_err(|error| AppError::from(error).into())
+    }
+}
+
+async fn accounts(State(app): State<Arc<App>>) -> Json<crate::accounts::Overview> {
+    Json(app.accounts.overview().await)
+}
+async fn account_action(
     State(app): State<Arc<App>>,
+    request: Request,
+) -> Result<Json<Value>, ApiError> {
+    let result = app.accounts.request(document(request).await?).await?;
+    #[cfg(feature = "dashboard-fixture")]
+    if app.fixture {
+        crate::fixture::pending_workers(&app).await;
+    }
+    Ok(Json(result))
+}
+async fn connection(State(app): State<Arc<App>>) -> Json<Value> {
+    Json(app.accounts.connection().await)
+}
+
+async fn games(
+    AccountApp(app): AccountApp,
     Json(query): Json<crate::app::commands::GameQuery>,
 ) -> Result<Json<Vec<crate::config::GameMetadata>>, ApiError> {
     Ok(Json(app.games(query).await?))
 }
 async fn search_channels(
-    State(app): State<Arc<App>>,
+    AccountApp(app): AccountApp,
     Json(query): Json<crate::app::commands::ChannelQuery>,
 ) -> Result<Json<Vec<crate::dto::ChannelSearchResult>>, ApiError> {
     Ok(Json(app.search_channels(query).await?))
@@ -105,6 +155,14 @@ impl ApiError {
 impl From<AppError> for ApiError {
     fn from(error: AppError) -> Self {
         match error {
+            AppError::Account(error) => Self(
+                if matches!(error, crate::accounts::Error::NotFound) {
+                    StatusCode::NOT_FOUND
+                } else {
+                    StatusCode::CONFLICT
+                },
+                error.code(),
+            ),
             AppError::Telegram(error) => Self(
                 if error == twitch_drops_miner_core::notifications::Error::Conflict {
                     StatusCode::CONFLICT
@@ -161,26 +219,15 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/auth/login", post(auth_login))
         .route("/api/auth/logout", post(auth_logout))
         .route("/api/auth/settings", post(auth_settings))
-        .route("/api/status", get(status))
-        .route("/api/channels", get(channels))
-        .route("/api/channels/select", post(select_channel))
-        .route("/api/campaigns", get(campaigns))
-        .route("/api/console", get(console))
-        .route("/api/settings", get(settings).post(update_settings))
+        .nest("/api/accounts/{account}", account_routes())
+        .nest("/api", account_routes())
+        .route("/api/accounts", get(accounts).post(account_action))
+        .route("/api/connection", get(connection))
         .route("/api/telegram", get(telegram).post(save_telegram))
         .route("/api/telegram/bot", get(telegram_bot))
         .route("/api/telegram/test", post(test_telegram))
-        .route("/api/games", post(games))
-        .route("/api/channels/search", post(search_channels))
         .route("/api/settings/verify-proxy", post(verify_proxy))
         .route("/api/version", get(version))
-        .route("/api/history", get(history))
-        .route("/api/history/stats", get(history_stats))
-        .route("/api/twitch/logout", post(logout_twitch))
-        .route("/api/oauth/confirm", post(confirm_oauth))
-        .route("/api/reload", post(reload))
-        .route("/api/cache/clear", post(clear_cache))
-        .route("/api/mode/exit-manual", post(exit_manual))
         .route("/api/close", post(close));
     #[cfg(feature = "dashboard-fixture")]
     if app.fixture {
@@ -190,6 +237,25 @@ pub fn router(app: Arc<App>) -> Router {
         .layer(layer)
         .layer(middleware::from_fn_with_state(app.clone(), guard));
     routes.with_state(app)
+}
+
+fn account_routes() -> Router<Arc<App>> {
+    Router::new()
+        .route("/status", get(status))
+        .route("/channels", get(channels))
+        .route("/channels/select", post(select_channel))
+        .route("/channels/search", post(search_channels))
+        .route("/campaigns", get(campaigns))
+        .route("/console", get(console))
+        .route("/settings", get(settings).post(update_settings))
+        .route("/games", post(games))
+        .route("/history", get(history))
+        .route("/history/stats", get(history_stats))
+        .route("/twitch/logout", post(logout_twitch))
+        .route("/oauth/confirm", post(confirm_oauth))
+        .route("/reload", post(reload))
+        .route("/cache/clear", post(clear_cache))
+        .route("/mode/exit-manual", post(exit_manual))
 }
 
 async fn guard(State(app): State<Arc<App>>, mut request: Request, next: Next) -> Response {
@@ -424,71 +490,72 @@ async fn auth_settings(State(app): State<Arc<App>>, request: Request) -> Respons
     }
 }
 
-async fn status(State(app): State<Arc<App>>) -> Json<Value> {
+async fn status(AccountApp(app): AccountApp) -> Json<Value> {
     let state = app.snapshot.read().await;
     Json(json!({"status":state.status,"login":state.login,"manual_mode":state.manual_mode}))
 }
-async fn channels(State(app): State<Arc<App>>) -> Json<Value> {
+async fn channels(AccountApp(app): AccountApp) -> Json<Value> {
     Json(json!({"channels":app.snapshot.read().await.channels}))
 }
-async fn campaigns(State(app): State<Arc<App>>) -> Json<Value> {
+async fn campaigns(AccountApp(app): AccountApp) -> Json<Value> {
     Json(json!({"campaigns":app.snapshot.read().await.campaigns}))
 }
-async fn console(State(app): State<Arc<App>>) -> Json<Value> {
+async fn console(AccountApp(app): AccountApp) -> Json<Value> {
     Json(json!({"lines":app.snapshot.read().await.console}))
 }
-async fn settings(State(app): State<Arc<App>>) -> Json<SettingsView> {
+async fn settings(AccountApp(app): AccountApp) -> Json<SettingsView> {
     Json(app.snapshot.read().await.settings.clone())
 }
 
 async fn update_settings(
-    State(app): State<Arc<App>>,
+    AccountApp(app): AccountApp,
     request: Request,
 ) -> Result<Json<Value>, ApiError> {
     let patch: Value = document(request).await?;
-    let settings = app.application.update_settings(patch).await?;
+    let settings = app.update_settings(patch).await?;
     Ok(Json(json!({"success":true,"settings":settings})))
 }
 
 async fn select_channel(
-    State(app): State<Arc<App>>,
+    AccountApp(app): AccountApp,
     request: Request,
 ) -> Result<Json<Value>, ApiError> {
     let selection: ChannelSelection = document(request).await?;
-    app.application.select_channel(selection).await?;
+    app.select_channel(selection).await?;
     Ok(Json(json!({"success":true})))
 }
 
-async fn history(State(app): State<Arc<App>>, Query(query): Query<HistoryQuery>) -> Json<Value> {
-    Json(app.application.history(query).await)
+async fn history(AccountApp(app): AccountApp, Query(query): Query<HistoryQuery>) -> Json<Value> {
+    Json(app.history(query).await)
 }
 
-async fn history_stats(State(app): State<Arc<App>>) -> Json<Value> {
+async fn history_stats(AccountApp(app): AccountApp) -> Json<Value> {
     Json(app.history.lock().await.stats())
 }
-async fn run_command(app: &App, command: Command) -> Result<Json<Value>, ApiError> {
+async fn run_command(app: &Application, command: Command) -> Result<Json<Value>, ApiError> {
     app.command(command).await?;
     Ok(Json(json!({"success":true})))
 }
-async fn reload(State(app): State<Arc<App>>) -> Result<Json<Value>, ApiError> {
+async fn reload(AccountApp(app): AccountApp) -> Result<Json<Value>, ApiError> {
     app.refresh_inventory().await?;
     Ok(Json(json!({"success":true})))
 }
-async fn clear_cache(State(app): State<Arc<App>>) -> Result<Json<Value>, ApiError> {
+async fn clear_cache(AccountApp(app): AccountApp) -> Result<Json<Value>, ApiError> {
     app.clear_cache().await?;
     Ok(Json(json!({"success":true})))
 }
-async fn logout_twitch(State(app): State<Arc<App>>) -> Result<Json<Value>, ApiError> {
+async fn logout_twitch(AccountApp(app): AccountApp) -> Result<Json<Value>, ApiError> {
     run_command(&app, Command::Logout).await
 }
-async fn confirm_oauth(State(app): State<Arc<App>>) -> Result<Json<Value>, ApiError> {
+async fn confirm_oauth(AccountApp(app): AccountApp) -> Result<Json<Value>, ApiError> {
     run_command(&app, Command::ConfirmOAuth).await
 }
-async fn exit_manual(State(app): State<Arc<App>>) -> Result<Json<Value>, ApiError> {
+async fn exit_manual(AccountApp(app): AccountApp) -> Result<Json<Value>, ApiError> {
     run_command(&app, Command::ExitManual).await
 }
 async fn close(State(app): State<Arc<App>>) -> Result<Json<Value>, ApiError> {
-    run_command(&app, Command::Shutdown).await
+    app.shutdown.cancel();
+    Ok(Json(json!({"success":true})))
 }
 
 async fn verify_proxy(

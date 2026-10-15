@@ -1,16 +1,13 @@
+import { Link } from '../../app/accountNavigation';
 import Telegram from './Telegram';
 import { DesktopUpdates } from './DesktopUpdates';
 import UpdateCheck from './UpdateCheck';
 import { isDesktop } from '../../shared/lib/platform';
 import { DesktopSettings } from './Desktop';
 import { Icon } from '@mdi/react';
-import { Link, useLocation } from 'react-router';
+import { useLocation } from 'react-router';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
-  mdiOpenInNew,
-  mdiLogout,
-  mdiContentCopy,
-  mdiCheck,
   mdiAccountOutline,
   mdiShieldLockOutline,
   mdiLanConnect,
@@ -18,23 +15,18 @@ import {
   mdiMonitor,
   mdiBellOutline,
 } from '@mdi/js';
-import type {
-  AuthStatus,
-  ReleaseInfo,
-  Result,
-  Settings as SettingsData,
-} from '../../shared/lib/types';
+import type { AuthStatus, ReleaseInfo } from '../../shared/lib/types';
 import { request, safeUrl } from '../../shared/lib/api';
 import { useMiner } from '../../app/MinerProvider';
-import { plainText, useT } from '../../shared/lib/i18n';
-import AccountIdentity, { AccountBadges } from '../account/Account';
+import { useT } from '../../shared/lib/i18n';
+import Accounts from '../account/Accounts';
+import Connection from './Connection';
+import { useAccounts } from '../../app/accounts';
 import {
   ActionResult,
   Button,
   Dialog,
-  Empty,
   Field,
-  IconButton,
   Input,
   Notice,
   useAction,
@@ -51,7 +43,7 @@ function Section({
   hidden?: boolean;
 }) {
   return (
-    <section id={id} hidden={hidden} className="scroll-mt-6 space-y-5 pb-8">
+    <section id={`settings-${id}`} hidden={hidden} className="scroll-mt-6 space-y-5 pb-8">
       {help && <p className="max-w-2xl text-[13px] leading-relaxed text-muted">{help}</p>}
       <div className="space-y-4">{children}</div>
     </section>
@@ -197,7 +189,6 @@ function ReleaseNotice({ disabled }: { disabled: boolean }) {
       <UpdateCheck
         version={release?.current_version}
         checking={busy}
-        current={!busy && release?.check_succeeded && !available}
         disabled={disabled}
         onCheck={() => void check()}
       >
@@ -228,10 +219,10 @@ function ReleaseNotice({ disabled }: { disabled: boolean }) {
   );
 }
 
-function SettingsContent({ settings, auth }: { settings: SettingsData; auth: AuthStatus }) {
-  const { data, connected, autosave } = useMiner();
+function SettingsContent({ auth }: { auth: AuthStatus }) {
+  const { data, connected, autosave, request: scopedRequest } = useMiner();
+  const accounts = useAccounts();
   const t = useT();
-  const draft = autosave.draft ?? settings;
   const location = useLocation();
   const section =
     [
@@ -247,41 +238,7 @@ function SettingsContent({ settings, auth }: { settings: SettingsData; auth: Aut
     action: () => Promise<unknown>;
   } | null>(null);
   const command = useAction();
-  const proxyAction = useAction();
-  const oauthAction = useAction();
-  const logoutAction = useAction();
-  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
-  const copyTimer = useRef<number | undefined>(undefined);
-  const copyRequest = useRef(0);
-  useEffect(() => {
-    setCopyState('idle');
-    return () => {
-      copyRequest.current += 1;
-      window.clearTimeout(copyTimer.current);
-    };
-  }, [data?.login.oauth_pending?.code]);
-  async function copyCode(code: string) {
-    const request = ++copyRequest.current;
-    let state: 'copied' | 'failed' = 'copied';
-    try {
-      await navigator.clipboard.writeText(code);
-    } catch {
-      state = 'failed';
-    }
-    if (request !== copyRequest.current) return;
-    window.clearTimeout(copyTimer.current);
-    setCopyState(state);
-    if (state === 'copied') {
-      copyTimer.current = window.setTimeout(() => setCopyState('idle'), 3000);
-    }
-  }
   const dirty = autosave.pending || autosave.busy;
-  const change = autosave.change;
-  const oauth = data?.login.oauth_pending;
-  async function test(path: string, payload: unknown) {
-    const result = await request<Result>(path, payload);
-    if (!result.success) throw new Error(result.message);
-  }
   return (
     <div className="flex max-w-4xl flex-col gap-8">
       <div>
@@ -307,164 +264,44 @@ function SettingsContent({ settings, auth }: { settings: SettingsData; auth: Aut
             to={`#${id}`}
           >
             <Icon path={icon} className="mdi-icon" />
-            {t(id === 'desktop' ? 'gui.desktop.tab' : id)}
+            {t(id === 'desktop' ? 'gui.desktop.tab' : id === 'account' ? 'accounts' : id)}
           </Link>
         ))}
       </nav>
       <Section hidden={section !== 'account'} id="account">
-        <div className="flex min-h-9 items-center gap-2 max-md:min-h-11">
-          {data?.login.user_id ? (
-            <AccountIdentity profile={data.login.profile} />
-          ) : (
-            <p className="text-soft">{plainText(data?.login.status ?? '')}</p>
-          )}
-          {data?.login.user_id && (
-            <>
-              {data.login.profile?.login && (
-                <a
-                  className="icon-button"
-                  href={`https://www.twitch.tv/${encodeURIComponent(data.login.profile.login)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label={t('open_twitch_profile')}
-                  title={t('open_twitch_profile')}
-                >
-                  <Icon path={mdiOpenInNew} className="mdi-icon" />
-                </a>
-              )}
-              <IconButton
-                path={mdiLogout}
-                label={t('twitch_logout')}
-                disabled={!connected || logoutAction.busy}
-                onClick={() => void logoutAction.run(() => request('/api/twitch/logout', {}))}
-              />
-            </>
-          )}
-        </div>
-        <ActionResult action={logoutAction} />
-        {data?.login.user_id && (
-          <AccountBadges key={data.login.user_id} profile={data.login.profile} />
-        )}
-        {oauth ? (
-          <div className="grid gap-3">
-            <div className="authorization-row">
-              <div className="flex items-center gap-2 rounded border border-divider bg-field ps-3 pe-1">
-                <code className="select-all text-lg tracking-[.2em]">{oauth.code}</code>
-                <IconButton
-                  path={copyState === 'copied' ? mdiCheck : mdiContentCopy}
-                  label={t('copy_code')}
-                  title={t(copyState === 'copied' ? 'code_copied' : 'copy_code')}
-                  className="size-7 max-md:size-9"
-                  onClick={() => void copyCode(oauth.code)}
-                />
-              </div>
-              <a className="button" href={safeUrl(oauth.url)} target="_blank" rel="noreferrer">
-                {t('gui.login.oauth_activate')}
-                <Icon className="mdi-icon" path={mdiOpenInNew} />
-              </a>
-              <Button
-                disabled={!connected || oauthAction.busy}
-                onClick={() => void oauthAction.run(() => request('/api/oauth/confirm', {}))}
-              >
-                {t('gui.login.oauth_confirm')}
-              </Button>
-            </div>
-            {copyState === 'copied' && (
-              <span className="sr-only" role="status">
-                {t('code_copied')}
-              </span>
-            )}
-            {copyState === 'failed' && <Notice error>{t('copy_code_failed')}</Notice>}
-            <ActionResult action={oauthAction} />
-          </div>
-        ) : (
-          !data?.login.user_id && <Notice>{t('authorization_pending')}</Notice>
-        )}
+        <Accounts />
       </Section>
-      <form
-        hidden={section !== 'connection'}
-        onSubmit={(event) => {
-          event.preventDefault();
-        }}
-      >
-        <fieldset disabled={!connected} className="min-w-0 space-y-8">
-          <Section id="connection">
-            <Field label={t('gui.settings.minimum_refresh')}>
-              <Input
-                type="number"
-                min={1}
-                max={1440}
-                step={1}
-                required
-                value={
-                  Number.isFinite(draft.minimum_refresh_interval_minutes)
-                    ? draft.minimum_refresh_interval_minutes
-                    : ''
-                }
-                onChange={(event) =>
-                  change('minimum_refresh_interval_minutes', event.target.valueAsNumber)
-                }
-              />
-            </Field>
-
-            {!isDesktop() && <p className="muted">{t(connected ? 'connected' : 'connecting')}</p>}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label={t('proxy')} help={t('proxy_help')}>
-                <Input
-                  type="url"
-                  autoComplete="off"
-                  value={draft.proxy}
-                  placeholder="http://127.0.0.1:8080"
-                  onChange={(event) => change('proxy', event.target.value)}
-                />
-              </Field>
-              <Field label={t('gui.settings.connection_quality')}>
-                <select
-                  className="field"
-                  value={draft.connection_quality}
-                  onChange={(event) => change('connection_quality', Number(event.target.value))}
-                >
-                  {[1, 2, 3, 4, 5, 6].map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            <Button
-              disabled={!connected || !draft.proxy || proxyAction.busy}
-              onClick={() =>
-                void proxyAction.run(
-                  () => test('/api/settings/verify-proxy', { proxy: draft.proxy }),
-                  t('connection_verified'),
-                )
-              }
-            >
-              {t('verify_proxy')}
-            </Button>
-            <ActionResult action={proxyAction} />
-          </Section>
-        </fieldset>
-      </form>
+      {section === 'connection' && (
+        <Section id="connection">
+          <Connection />
+        </Section>
+      )}
       {isDesktop() ? (
         <Section hidden={section !== 'desktop'} id="desktop">
           <DesktopSettings />
         </Section>
       ) : (
-        <Access hidden={section !== 'access'} initial={auth} disabled={dirty || !connected} />
+        <Access
+          hidden={section !== 'access'}
+          initial={auth}
+          disabled={dirty || !accounts.connected}
+        />
       )}
-      {section === 'notifications' && <Telegram connected={connected} />}
+      {section === 'notifications' && <Telegram connected={accounts.connected} />}
       <Section hidden={section !== 'maintenance'} id="maintenance">
-        {isDesktop() ? <DesktopUpdates /> : <ReleaseNotice disabled={!connected} />}
+        {isDesktop() ? <DesktopUpdates /> : <ReleaseNotice disabled={!accounts.connected} />}
         <div className="flex flex-wrap gap-2">
           <Button
-            disabled={!connected || command.busy}
+            disabled={!connected || command.busy || !data}
             onClick={() =>
               setConfirmation({
                 title: t('gui.settings.clear_all_cache'),
-                text: t('cache_help'),
-                action: () => request('/api/cache/clear', {}),
+                text: t('accounts_cache_help', {
+                  name:
+                    accounts.overview?.accounts.find((account) => account.id === accounts.selected)
+                      ?.name || t('account'),
+                }),
+                action: () => scopedRequest('/api/cache/clear', {}),
               })
             }
           >
@@ -476,7 +313,7 @@ function SettingsContent({ settings, auth }: { settings: SettingsData; auth: Aut
             <summary className="text-[13px] text-muted">{t('advanced')}</summary>
             <Button
               className="mt-3"
-              disabled={!connected || command.busy}
+              disabled={!accounts.connected || command.busy}
               onClick={() =>
                 setConfirmation({
                   title: t('shutdown'),
@@ -539,11 +376,5 @@ function SettingsContent({ settings, auth }: { settings: SettingsData; auth: Aut
   );
 }
 export default function Settings({ auth }: { auth: AuthStatus }) {
-  const { data } = useMiner();
-  const t = useT();
-  return data ? (
-    <SettingsContent settings={data.settings} auth={auth} />
-  ) : (
-    <Empty title={t('loading')} />
-  );
+  return <SettingsContent auth={auth} />;
 }

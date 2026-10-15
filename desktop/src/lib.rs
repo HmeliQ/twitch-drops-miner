@@ -18,14 +18,13 @@ use tauri::Manager;
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::{Mutex, Notify, Semaphore};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
-use twitch_drops_miner_core::{
-    app::{AppError, Application},
-    logging,
-    runtime::Runtime,
-};
+use twitch_drops_miner_core::{accounts::AccountManager, app::AppError, logging};
 
 struct Desktop {
-    runtime: Mutex<Option<Runtime>>,
+    accounts: Mutex<Option<Arc<AccountManager>>>,
+    selected: std::sync::RwLock<Option<String>>,
+    selected_changed: Notify,
+    tray_targets: std::sync::RwLock<Vec<(twitch_drops_miner_core::accounts::Target, bool)>>,
     startup_error: Option<String>,
     requests: Semaphore,
     subscription: Mutex<Option<Arc<ipc::Subscription>>>,
@@ -113,26 +112,21 @@ impl Desktop {
     async fn drain(&self) {
         self.cancel.cancel();
         self.tasks.close();
-        if let Some(mut runtime) = self.runtime.lock().await.take()
-            && runtime.shutdown().await.is_err()
-        {
-            tracing::error!("Mining task failed during shutdown");
+        if let Some(accounts) = self.accounts.lock().await.take() {
+            accounts.shutdown().await;
         }
         self.tasks.wait().await;
         self.drained.store(true, Ordering::SeqCst);
     }
-    async fn application(&self) -> Result<Arc<Application>, ipc::Error> {
-        let runtime = self.runtime.lock().await;
-        runtime
-            .as_ref()
-            .map(|value| value.app.clone())
-            .ok_or_else(|| ipc::Error {
-                status: 503,
-                detail: self
-                    .startup_error
-                    .clone()
-                    .unwrap_or_else(|| AppError::Unavailable.to_string()),
-            })
+    async fn accounts(&self) -> Result<Arc<AccountManager>, ipc::Error> {
+        let accounts = self.accounts.lock().await;
+        accounts.as_ref().cloned().ok_or_else(|| ipc::Error {
+            status: 503,
+            detail: self
+                .startup_error
+                .clone()
+                .unwrap_or_else(|| AppError::Unavailable.to_string()),
+        })
     }
 }
 
@@ -206,7 +200,7 @@ pub fn run() {
                 twitch_drops_miner_core::store::read_json::<shell::Preferences>(&preferences_path);
             let guard = logging::initialize(&logs, 0, false);
             let opened = if preferences.is_ok() && guard.is_ok() {
-                Application::open(directory.join("data"))
+                AccountManager::open(directory.join("data"))
             } else {
                 Err(anyhow::anyhow!("desktop storage unavailable"))
             };
@@ -215,17 +209,18 @@ pub fn run() {
             let start_minimized = preferences.start_minimized;
             let close_to_tray = preferences.close_to_tray;
             #[cfg(not(feature = "desktop-fixture"))]
-            let (runtime, startup_error) = match opened {
-                Ok((application, commands)) => (
+            let (accounts, startup_error) = match opened {
+                Ok((accounts, commands)) => (
                     Some(tauri::async_runtime::block_on(async {
-                        Runtime::start(application, commands)
+                        accounts.start(commands).await;
+                        accounts
                     })),
                     None,
                 ),
                 Err(_) => (None, Some("desktop_start_failed".into())),
             };
             #[cfg(feature = "desktop-fixture")]
-            let (runtime, startup_error) = {
+            let (accounts, startup_error) = {
                 drop(opened);
                 (
                     Some(tauri::async_runtime::block_on(fixture::start(
@@ -235,7 +230,10 @@ pub fn run() {
                 )
             };
             app.manage(Desktop {
-                runtime: Mutex::new(runtime),
+                accounts: Mutex::new(accounts),
+                selected: std::sync::RwLock::new(None),
+                selected_changed: Notify::new(),
+                tray_targets: std::sync::RwLock::new(vec![]),
                 startup_error,
                 requests: Semaphore::new(8),
                 subscription: Mutex::new(None),
@@ -312,6 +310,8 @@ pub fn run() {
             ipc::state_close,
             #[cfg(feature = "desktop-fixture")]
             fixture::smoke_tray_status,
+            #[cfg(feature = "desktop-fixture")]
+            fixture::smoke_account_state,
             #[cfg(feature = "desktop-fixture")]
             fixture::smoke_result
         ])

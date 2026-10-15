@@ -30,6 +30,7 @@ async fn main() -> anyhow::Result<()> {
     })
     .await?;
     app.shutdown.cancel();
+    app.accounts.shutdown().await;
     worker.await?;
     app.drain_writes().await;
     app.sockets.close().await;

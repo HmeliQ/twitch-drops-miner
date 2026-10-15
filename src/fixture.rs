@@ -40,7 +40,9 @@ pub async fn create(directory: PathBuf) -> anyhow::Result<(Arc<App>, JoinHandle<
     app.telegram.disable_for_fixture();
     Arc::get_mut(&mut app).expect("new application").fixture = true;
     reset_state(&app).await?;
-    let worker = tokio::spawn(commands(app.clone(), receiver));
+    app.accounts.fixture_observe().await;
+    app.accounts.fixture_profiles(vec![]).await?;
+    let worker = tokio::spawn(commands(app.application.clone(), app.clone(), receiver));
     Ok((app, worker))
 }
 
@@ -77,6 +79,7 @@ pub fn routes(router: Router<Arc<App>>) -> Router<Arc<App>> {
         .route("/__test/reset", post(reset))
         .route("/__test/event", post(event))
         .route("/__test/reconnect", post(reconnect))
+        .route("/__test/accounts", post(accounts))
 }
 async fn reset(State(app): State<Arc<App>>) -> Result<Json<Value>, crate::web::ApiError> {
     app.command(Command::ExitManual).await?;
@@ -86,15 +89,39 @@ async fn reset(State(app): State<Arc<App>>) -> Result<Json<Value>, crate::web::A
             "fixture_reset_failed",
         )
     })?;
+    app.accounts.fixture_profiles(vec![]).await.map_err(|_| {
+        crate::web::ApiError(
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "fixture_reset_failed",
+        )
+    })?;
     Ok(Json(json!({"ok":true})))
 }
-async fn event(State(app): State<Arc<App>>, Json(body): Json<Event>) -> Json<Value> {
-    apply_event(&app, &body.event, &body.data).await;
-    app.sockets.emit(&body.event, &body.data).await;
-    Json(json!({"ok":true}))
+async fn event(
+    State(app): State<Arc<App>>,
+    Json(body): Json<Event>,
+) -> Result<Json<Value>, crate::web::ApiError> {
+    let account = match body.account {
+        Some(id) => app
+            .accounts
+            .account(&id)
+            .await
+            .map_err(crate::app::AppError::from)?,
+        None => app.application.clone(),
+    };
+    if body.event == "account_unavailable" {
+        account.shutdown.cancel();
+        app.accounts.overview().await;
+    } else {
+        apply_event(&account, &body.event, &body.data).await;
+    }
+    if account.account_id == crate::accounts::PRIMARY {
+        app.sockets.emit(&body.event, &body.data).await;
+    }
+    Ok(Json(json!({"ok":true})))
 }
 
-async fn apply_event(app: &App, event: &str, data: &Value) {
+async fn apply_event(app: &crate::app::Application, event: &str, data: &Value) {
     if event == "console_output" {
         if let Some(text) = data["message"].as_str() {
             app.console(text.to_owned()).await;
@@ -197,6 +224,7 @@ async fn apply_event(app: &App, event: &str, data: &Value) {
 }
 #[derive(Deserialize)]
 struct Event {
+    account: Option<String>,
     event: String,
     data: Value,
 }
@@ -206,7 +234,34 @@ async fn reconnect(State(app): State<Arc<App>>) -> Json<Value> {
     Json(json!({"ok":true}))
 }
 
-async fn commands(app: Arc<App>, mut receiver: mpsc::Receiver<CommandRequest>) {
+async fn accounts(
+    State(app): State<Arc<App>>,
+    Json(states): Json<Vec<Snapshot>>,
+) -> Result<Json<Value>, crate::web::ApiError> {
+    let workers = app.accounts.fixture_profiles(states).await.map_err(|_| {
+        crate::web::ApiError(axum::http::StatusCode::BAD_REQUEST, "invalid_fixture")
+    })?;
+    for (account, receiver) in workers {
+        app.accounts
+            .fixture_worker(tokio::spawn(commands(account, app.clone(), receiver)));
+    }
+    Ok(Json(
+        serde_json::to_value(app.accounts.overview().await).unwrap(),
+    ))
+}
+
+pub async fn pending_workers(app: &Arc<App>) {
+    for (account, receiver) in app.accounts.fixture_pending_workers().await {
+        app.accounts
+            .fixture_worker(tokio::spawn(commands(account, app.clone(), receiver)));
+    }
+}
+
+async fn commands(
+    app: Arc<crate::app::Application>,
+    web: Arc<App>,
+    mut receiver: mpsc::Receiver<CommandRequest>,
+) {
     let mut manual_until: Option<tokio::time::Instant> = None;
     loop {
         let request = tokio::select! {
@@ -246,16 +301,16 @@ async fn commands(app: Arc<App>, mut receiver: mpsc::Receiver<CommandRequest>) {
                     .iter()
                     .find(|channel| channel.watching)
                     .map(|channel| channel.id);
-                app.sockets
+                web.sockets
                     .emit("channel_watching", &json!({"id":watching}))
                     .await;
-                app.sockets.emit("manual_mode_update", &mode).await;
+                web.sockets.emit("manual_mode_update", &mode).await;
             }
             Command::ExitManual => {
                 manual_until = None;
                 let mode = ManualMode::default();
                 app.snapshot.write().await.manual_mode = mode.clone();
-                app.sockets.emit("manual_mode_update", &mode).await;
+                web.sockets.emit("manual_mode_update", &mode).await;
             }
             Command::MineChannel(login, duration) => {
                 let mode = if login == "missing" {
@@ -294,10 +349,10 @@ async fn commands(app: Arc<App>, mut receiver: mpsc::Receiver<CommandRequest>) {
                         state.channels.push(channel);
                         state.channels.clone()
                     };
-                    app.sockets
+                    web.sockets
                         .emit("channels_batch_update", &json!({"channels":channels}))
                         .await;
-                    app.sockets.emit("drop_progress_stop", &json!({})).await;
+                    web.sockets.emit("drop_progress_stop", &json!({})).await;
                     let channel = channels.iter().find(|channel| channel.login == login);
                     ManualMode {
                         active: true,
@@ -311,9 +366,12 @@ async fn commands(app: Arc<App>, mut receiver: mpsc::Receiver<CommandRequest>) {
                     }
                 };
                 app.snapshot.write().await.manual_mode = mode.clone();
-                app.sockets.emit("manual_mode_update", &mode).await;
+                web.sockets.emit("manual_mode_update", &mode).await;
             }
             Command::Logout => {
+                crate::twitch::oauth::Session::remove(&app.data.path)
+                    .expect("fixture session removal");
+                app.cancel_notifications();
                 manual_until = None;
                 let login = Login {
                     status: "Logged out".into(),
@@ -325,7 +383,7 @@ async fn commands(app: Arc<App>, mut receiver: mpsc::Receiver<CommandRequest>) {
                     ..Login::default()
                 };
                 app.snapshot.write().await.login = login.clone();
-                app.sockets.emit("login_status", &login).await;
+                web.sockets.emit("login_status", &login).await;
             }
             Command::SettingsChanged => {
                 let mut state = app.snapshot.write().await;

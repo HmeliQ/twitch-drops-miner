@@ -28,7 +28,7 @@ test('Telegram saves privately, tests explicitly and removes configuration', asy
   });
   await page.goto('/settings#notifications');
   const enable = page.getByRole('checkbox', {
-    name: 'Notify me when a reward is claimed',
+    name: 'Claim alerts',
     exact: true,
   });
   const image = page.getByRole('checkbox', { name: 'Include image', exact: true });
@@ -124,9 +124,7 @@ test('Remote controls save independently of alerts and require a private chat', 
   await expect(page.getByRole('button', { name: 'Send test', exact: true })).toBeEnabled();
   await page.reload();
   await expect(remote).toBeChecked();
-  await expect(
-    page.getByRole('checkbox', { name: 'Notify me when a reward is claimed', exact: true }),
-  ).not.toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Claim alerts', exact: true })).not.toBeChecked();
   await expect(page.getByLabel('Bot token', { exact: true })).toHaveValue('');
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await page.getByRole('button', { name: 'Remove configuration', exact: true }).click();
@@ -139,6 +137,11 @@ test('Telegram reports a configuration conflict without overwriting another clie
 }) => {
   const headers = { 'X-TDM-Request': '1' };
   await request.post('/__test/reset', { headers, data: {} });
+  const initial = await (await request.get('/api/telegram')).json();
+  await request.post('/api/telegram', {
+    headers,
+    data: { revision: initial.revision, remove: true },
+  });
   await page.goto('/settings#notifications');
   await expect(page.getByLabel('Chat ID', { exact: true })).toBeVisible();
   const saved = await (await request.get('/api/telegram')).json();
@@ -206,4 +209,50 @@ test('Bot metadata cannot block saves or show a different saved configuration', 
   await expect(link).toHaveText(name);
   await page.getByLabel('Bot token', { exact: true }).fill('456:new_token');
   await expect(link).toHaveCount(0);
+});
+
+test('Telegram account selection saves independently from remote control and survives reload', async ({
+  page,
+  request,
+}) => {
+  const headers = { 'X-TDM-Request': '1' };
+  await request.post('/__test/reset', { headers, data: {} });
+  const before = await (await request.get('/api/telegram')).json();
+  await request.post('/api/telegram', {
+    headers,
+    data: {
+      revision: before.revision,
+      enabled: true,
+      remote_control: true,
+      token: '123:fixture_only',
+      chat_id: '42',
+    },
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/settings#notifications');
+  const selector = page.getByRole('button', { name: 'Notification accounts', exact: true });
+  await expect(selector).toHaveText('All accounts');
+  await selector.click();
+  const popup = page.getByRole('group', { name: 'Notification accounts', exact: true });
+  await popup.getByRole('checkbox', { name: 'All accounts', exact: true }).uncheck();
+  await expect(selector).toHaveText('No accounts');
+  await popup.getByRole('checkbox', { name: 'Twitch 123456', exact: true }).check();
+  await expect(selector).toHaveText('1 account');
+  await selector.press('Escape');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  const saved = await (await request.get('/api/telegram')).json();
+  expect(saved.notification_accounts).toEqual([123456]);
+  expect(saved.remote_control).toBe(true);
+  await page.reload();
+  await expect(selector).toHaveText('1 account');
+  await selector.click();
+  await popup.getByRole('checkbox', { name: 'All accounts', exact: true }).check();
+  await selector.press('Escape');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect
+    .poll(async () => (await (await request.get('/api/telegram')).json()).notification_accounts)
+    .toBeNull();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 });

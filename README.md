@@ -11,7 +11,7 @@
 </p>
 
 Choose your games in the app or web dashboard, and the miner watches eligible channels and
-claims your drops. It runs on your own hardware with one Twitch account per installation.
+claims your drops. It runs on your own hardware and can mine up to 20 of your Twitch accounts at once.
 
 ![Drops Miner dashboard with a Twitch profile and badge, Fortnite reward progress, channels and queued campaigns](.github/assets/dashboard-mining.png)
 
@@ -87,14 +87,18 @@ or the [changelog](CHANGELOG.md).
 
 ## First login
 
-1. Open **Settings > Twitch account**. Copy the code, select **Twitch Activate** and
-   authorize on Twitch, then select **Done** in the dashboard.
+1. Open **Settings > Accounts > Add account**. Copy the code, select **Twitch Activate** and
+   authorize on Twitch. Select **Done**, check the account shown, then **Add account**.
 2. Link your game accounts on [Twitch Drops campaigns](https://www.twitch.tv/drops/campaigns).
 3. Open **Campaigns** and select **Mine** on a campaign to add its game to your priorities.
 4. Use **Mining > Up next > Edit** to reorder games. Leave the miner running.
 
-Your Twitch session survives restarts. Enter your Twitch password only on Twitch's
-own authorization page.
+Your Twitch sessions survive restarts. Enter your Twitch password only on Twitch's
+own authorization page. The account switcher changes the account you view; other accounts
+keep mining. **Settings > Accounts** manages accounts, pauses/resumes selected accounts and
+copies mining preferences. **Connection** and Telegram settings apply to the whole installation.
+Sign out keeps that account's settings and history. Remove also hides it; adding the same
+Twitch account restores its retained data. Existing single-account data stays in place.
 
 > [!WARNING]
 > Avoid watching Twitch manually on the same account while mining. Simultaneous viewing
@@ -108,7 +112,7 @@ own authorization page.
 | **Campaigns > Available** | Search campaigns, inspect rewards and add games to mining. |
 | **Campaigns > History** | Browse recorded claims, including rewards no longer in the catalog. |
 | **Activity** | Find session events, warnings and errors; filter or follow new events. |
-| **Settings** | View your profile and badges; manage dashboard access, connection and maintenance. |
+| **Settings** | Manage accounts, dashboard access, connection and maintenance. |
 
 ### Telegram
 
@@ -124,8 +128,8 @@ own authorization page.
 
 Keep the token and the URL containing it private. If shared, revoke the token through BotFather.
 Remote control accepts only your private chat (a positive chat ID), using a dedicated bot for
-one running miner. Its command menu offers `/status`, `/pause`, `/resume`, `/mine Game` and
-`/help`. `/mine` adds a game from current campaigns or saved games; existing priorities,
+one installation. Use `/accounts` to choose the account controlled by `/status`, `/pause`,
+`/resume` and `/mine Game`; this selection is separate from the dashboard. `/help` lists the commands. `/mine` adds a game from current campaigns or saved games; existing priorities,
 pause and manual channel selection still apply. Pause stops watching, while inventory and
 automatic claims continue. Commands queued before startup/reconfiguration or more than
 two minutes old are discarded. If commands conflict, stop the other bot receiver or use
@@ -243,8 +247,8 @@ restart, then set a new password. Keep all other data.
 <details>
 <summary>Clear cache and history</summary>
 
-**Settings > Maintenance > Clear All Cache** removes cached campaign and channel data and
-local claim history, then refreshes inventory. It keeps settings, Twitch credentials and
+**Settings > Maintenance > Clear All Cache** removes the viewed account's cached campaign
+and channel data and local claim history, then refreshes inventory. It keeps settings, Twitch credentials and
 completed campaign records. Cleared history stays cleared; this cannot be undone.
 
 </details>

@@ -153,14 +153,14 @@ test('mining priority retains rapid edits through conflicts, retry and reconnect
     release = resolve;
   });
   await page.route(
-    '**/api/settings',
+    '**/api/accounts/primary/settings',
     async (route) => {
       await gate;
       await route.continue();
     },
     { times: 1 },
   );
-  const sent = page.waitForRequest('**/api/settings');
+  const sent = page.waitForRequest('**/api/accounts/primary/settings');
   await priority.selectOption('short_events');
   await sent;
   await priority.selectOption('ending_soonest');
@@ -355,7 +355,7 @@ test('refresh request errors stay in the button and require a connected Twitch a
   page,
   request,
 }) => {
-  await page.route('**/api/reload', (route) =>
+  await page.route('**/api/accounts/primary/reload', (route) =>
     route.fulfill({ status: 503, json: { detail: 'request_failed' } }),
   );
   await page.getByRole('button', { name: 'Refresh inventory', exact: true }).click();
@@ -391,7 +391,7 @@ test('Maintenance shows a release notice and notes link without installing anyth
     }),
   );
   await page.goto('/settings#maintenance');
-  const maintenance = page.locator('#maintenance');
+  const maintenance = page.locator('#settings-maintenance');
   await expect(maintenance.getByText('Version 0.2.0 is available.')).toBeVisible();
   await expect(maintenance.getByTitle('Installed version: 0.1.0')).toHaveText('v0.1.0');
   await expect(maintenance.locator('summary')).toHaveText('Advanced actions');
@@ -409,7 +409,9 @@ test('Maintenance shows a release notice and notes link without installing anyth
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
-  expect((await new AxeBuilder({ page }).include('#maintenance').analyze()).violations).toEqual([]);
+  expect(
+    (await new AxeBuilder({ page }).include('#settings-maintenance').analyze()).violations,
+  ).toEqual([]);
 });
 
 test('failed release checks stay distinct from up-to-date and can be retried', async ({ page }) => {
@@ -426,7 +428,7 @@ test('failed release checks stay distinct from up-to-date and can be retried', a
     }),
   );
   await page.goto('/settings#maintenance');
-  const maintenance = page.locator('#maintenance');
+  const maintenance = page.locator('#settings-maintenance');
   await expect(maintenance.getByText('Could not check for updates. Try again.')).toBeVisible();
   await expect(maintenance.getByText("You're up to date.")).toHaveCount(0);
   successful = true;
@@ -470,15 +472,20 @@ for (const width of [1280, 320]) {
       });
     });
     await page.goto('/settings');
-    const account = page.locator('#account');
-    const status = account.locator('.account-identity');
-    const logout = account.getByRole('button', { name: 'Log out of Twitch', exact: true });
+    const account = page.locator('#settings-account');
+    const identity = account.locator('.account-identity');
+    const logout = account.getByRole('button', { name: 'Sign out Twitch 123456', exact: true });
     await expect(logout).toBeEnabled();
-    const h = (await status.boundingBox())!;
+    const h = (await identity.boundingBox())!;
     const l = (await logout.boundingBox())!;
-    expect(l.x).toBeGreaterThanOrEqual(h.x + h.width);
-    expect(l.x - (h.x + h.width)).toBeLessThanOrEqual(12);
-    expect(l.y + l.height / 2).toBeCloseTo(h.y + h.height / 2, 0);
+    expect(l.width).toBe(width < 768 ? 44 : 36);
+    if (width >= 640) {
+      expect(l.x).toBeGreaterThanOrEqual(h.x + h.width);
+      expect(l.y + l.height / 2).toBeCloseTo(h.y + h.height / 2, 0);
+    } else {
+      expect(l.y).toBeGreaterThanOrEqual(h.y + h.height);
+      expect(l.x + l.width).toBeLessThanOrEqual(width);
+    }
     await expect(account.getByText('Twitch ID: 123456', { exact: true })).toHaveCount(0);
     await account.screenshot({ path: `../artifacts/account-controls-${width}.png` });
 
@@ -504,7 +511,7 @@ for (const width of [1280, 320]) {
     expect(await checking.locator('svg').evaluate((el) => getComputedStyle(el).animationName)).toBe(
       'none',
     );
-    await expect(page.locator('#maintenance').getByRole('status')).toHaveText(
+    await expect(page.locator('#settings-maintenance').getByRole('status')).toHaveText(
       'Checking for updates…',
     );
     release();
@@ -515,8 +522,12 @@ for (const width of [1280, 320]) {
       width,
     );
     expect(
-      (await new AxeBuilder({ page }).include('#account').include('#maintenance').analyze())
-        .violations,
+      (
+        await new AxeBuilder({ page })
+          .include('#settings-account')
+          .include('#settings-maintenance')
+          .analyze()
+      ).violations,
     ).toEqual([]);
   });
 }
@@ -628,14 +639,18 @@ test('confirmed progress and compact desktop design', async ({ page }) => {
   await expect(page.getByText('48 / 60 min')).toHaveCount(0);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await expect(
-    page.locator('aside').getByRole('link', { name: 'Twitch account', exact: true }),
+    page
+      .locator('aside')
+      .getByRole('link', { name: 'Manage accounts', exact: true })
+      .filter({ visible: true }),
   ).toBeVisible();
   const github = page.getByRole('link', { name: 'GitHub repository' }).locator('svg path');
   const githubBox = (await github.boundingBox())!;
   expect(githubBox.width).toBeCloseTo(32, 1);
   const accountBox = (await page
     .locator('aside')
-    .getByRole('link', { name: 'Twitch account', exact: true })
+    .getByRole('link', { name: 'Manage accounts', exact: true })
+    .filter({ visible: true })
     .boundingBox())!;
   expect(githubBox.y + githubBox.height).toBeLessThan(accountBox.y);
   const channels = page
@@ -988,7 +1003,10 @@ test('Overview fits the desktop viewport and only scrolls the page when space is
   expect((await page.locator('aside').boundingBox())!.y).toBeCloseTo(0, 0);
   await expect(page.getByRole('navigation').getByRole('link', { name: 'Mining' })).toBeInViewport();
   await expect(
-    page.locator('aside').getByRole('link', { name: 'Twitch account', exact: true }),
+    page
+      .locator('aside')
+      .getByRole('link', { name: 'Manage accounts', exact: true })
+      .filter({ visible: true }),
   ).toBeInViewport();
   await page.screenshot({ path: '../artifacts/overview-short-window.png', fullPage: true });
 });
@@ -1022,11 +1040,11 @@ test('keyboard focus remains visible without outlines across controls', async ({
   await field.focus();
   expect(await field.evaluate((element) => getComputedStyle(element).borderColor)).not.toBe(before);
   expect(await field.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe('none');
-  for (const name of ['Log out of Twitch', 'Enable password protection']) {
+  for (const name of ['Add account', 'Enable password protection']) {
     await page
       .getByRole('navigation', { name: 'Settings sections' })
       .getByRole('link', {
-        name: name === 'Log out of Twitch' ? 'Twitch account' : 'Dashboard access',
+        name: name === 'Add account' ? 'Accounts' : 'Dashboard access',
         exact: true,
       })
       .click();
@@ -1165,7 +1183,7 @@ test('campaign sort controls preserve filters and keep counts and resets in comp
   const titles = page.locator('main .campaign-open > span > span.font-medium');
   const writes: string[] = [];
   page.on('request', (request) => {
-    if (request.url().endsWith('/api/settings') && request.method() !== 'GET')
+    if (request.url().endsWith('/api/accounts/primary/settings') && request.method() !== 'GET')
       writes.push(request.method());
   });
   for (const [value, names] of [
@@ -1284,7 +1302,7 @@ test('History contains recorded claims independently of campaign completion and 
   await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
   await expect(page.getByText('Expired campaign', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('checkbox', { name: 'Expired', exact: true })).toHaveCount(0);
-  await page.route('**/api/history', async (route) =>
+  await page.route('**/api/accounts/primary/history', async (route) =>
     route.fulfill({
       json: {
         ...(await (await route.fetch()).json()),
@@ -1332,7 +1350,7 @@ test('History claims honor game filters and retry failed loading', async ({ page
     finishLoad = resolve;
   });
   await page.route(
-    '**/api/history',
+    '**/api/accounts/primary/history',
     async (route) => {
       await loading;
       await route.fulfill({ status: 500, json: {} });
@@ -1341,7 +1359,9 @@ test('History claims honor game filters and retry failed loading', async ({ page
       times: 1,
     },
   );
-  const started = page.waitForRequest((request) => request.url().endsWith('/api/history'));
+  const started = page.waitForRequest((request) =>
+    request.url().endsWith('/api/accounts/primary/history'),
+  );
   await page.goto('/campaigns?tab=finished');
   await started;
   try {
@@ -1350,7 +1370,7 @@ test('History claims honor game filters and retry failed loading', async ({ page
     finishLoad();
   }
   await expect(page.getByRole('alert')).toContainText('Could not load history. Try again.');
-  await page.route('**/api/history', async (route) =>
+  await page.route('**/api/accounts/primary/history', async (route) =>
     route.fulfill({
       json: {
         ...(await (await route.fetch()).json()),
@@ -1424,22 +1444,23 @@ test('game priorities show icons instead of editable numbers', async ({ page, re
   );
 });
 
-test('Twitch logout leaves the dashboard available and shows the next login', async ({ page }) => {
-  await page.goto('/settings');
-  const tabs = page.getByRole('navigation', { name: 'Settings sections' });
-  await tabs.getByRole('link', { name: 'Connection', exact: true }).click();
+test('Twitch logout leaves the dashboard and retained profile available for sign-in', async ({
+  page,
+}) => {
+  await page.goto('/settings#account');
+  await page.getByRole('button', { name: 'Sign out Twitch 123456', exact: true }).click();
+  const actions = page.getByRole('dialog', { name: 'Twitch 123456', exact: true });
+  await actions.getByRole('button', { name: 'Log out of Twitch', exact: true }).click();
+  await expect(actions).not.toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Connection', exact: true }).click();
   await expect(page.getByText('Dashboard connected', { exact: true })).toBeVisible();
-  await tabs.getByRole('link', { name: 'Twitch account', exact: true }).click();
-  await page.getByRole('button', { name: 'Log out of Twitch', exact: true }).click();
-  await expect(page.getByText('NEWCODE', { exact: true })).toBeVisible();
-  await tabs.getByRole('link', { name: 'Connection', exact: true }).click();
-  await expect(page.getByText('Dashboard connected', { exact: true })).toBeVisible();
-  await tabs.getByRole('link', { name: 'Twitch account', exact: true }).click();
-  await expect(page.getByText('Connected', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Log out of Twitch', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Accounts', exact: true }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('dialog').locator('code')).toHaveText('TESTCODE');
   await page.reload();
-  await expect(page.getByText('NEWCODE', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Continue sign-in', exact: true }).click();
+  await expect(page.getByRole('dialog').locator('code')).toHaveText('TESTCODE');
 });
 
 test('manual game confirmation supports Escape and safe literal names', async ({ page }) => {
@@ -1457,46 +1478,43 @@ test('autosave retains conflicting edits and retries only edited fields', async 
   page,
   request,
 }) => {
-  await page.goto('/settings#connection');
+  await page.goto('/?edit=priorities');
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
   await page.route(
-    '**/api/settings',
+    '**/api/accounts/primary/settings',
     async (route) => {
       await gate;
       await route.continue();
     },
     { times: 1 },
   );
-  const sent = page.waitForRequest('**/api/settings');
-  const interval = page.getByLabel('Minimum Refresh Interval (minutes):', { exact: true });
-  await interval.fill('45');
+  const sent = page.waitForRequest('**/api/accounts/primary/settings');
+  const ignored = page.getByLabel('Ignore rewards by name', { exact: true });
+  await ignored.fill('Hat');
   await sent;
   const current = await (await request.get('/api/settings')).json();
   await request.post('/api/settings', {
     headers,
     data: {
       revision: current.revision,
-      minimum_refresh_interval_minutes: 90,
-      connection_quality: 3,
+      drop_name_blacklist: ['Other'],
+      auto_claim_drops: false,
     },
   });
   release();
   await expect(page.getByRole('alert')).toContainText('Settings changed on another device');
-  await expect(interval).toHaveValue('45');
-  expect((await (await request.get('/api/settings')).json()).minimum_refresh_interval_minutes).toBe(
-    90,
-  );
+  await expect(ignored).toHaveValue('Hat');
+  expect((await (await request.get('/api/settings')).json()).drop_name_blacklist).toEqual([
+    'Other',
+  ]);
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
   await expect
-    .poll(
-      async () =>
-        (await (await request.get('/api/settings')).json()).minimum_refresh_interval_minutes,
-    )
-    .toBe(45);
-  expect((await (await request.get('/api/settings')).json()).connection_quality).toBe(3);
+    .poll(async () => (await (await request.get('/api/settings')).json()).drop_name_blacklist)
+    .toEqual(['Hat']);
+  expect((await (await request.get('/api/settings')).json()).auto_claim_drops).toBe(false);
 });
 
 test('history displays saved artwork, old entries and clearly labels unknown claim times', async ({
@@ -1510,7 +1528,7 @@ test('history displays saved artwork, old entries and clearly labels unknown cla
       body: '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" />',
     }),
   );
-  await page.route('**/api/history', async (route) =>
+  await page.route('**/api/accounts/primary/history', async (route) =>
     route.fulfill({
       json: {
         ...(await (await route.fetch()).json()),
@@ -1732,10 +1750,11 @@ test('failed settings save retains input', async ({ page }) => {
   await page.goto('/settings#connection');
   await page.getByLabel('Proxy URL', { exact: true }).fill('http://127.0.0.1:9999');
   await page.route(
-    '**/api/settings',
+    '**/api/accounts',
     (route) => route.fulfill({ status: 500, json: { detail: 'save_failed' } }),
     { times: 1 },
   );
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('alert')).toBeVisible();
   await expect(page.getByLabel('Proxy URL', { exact: true })).toHaveValue('http://127.0.0.1:9999');
   await expect(page.getByText('gui.auth.save_failed')).toHaveCount(0);
@@ -1745,37 +1764,34 @@ test('autosave queues newer input, stays quiet and persists the latest edit acro
   page,
   request,
 }) => {
-  await page.goto('/settings#connection');
+  await page.goto('/?edit=priorities');
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
   await page.route(
-    '**/api/settings',
+    '**/api/accounts/primary/settings',
     async (route) => {
       await gate;
       await route.continue();
     },
     { times: 1 },
   );
-  const sent = page.waitForRequest('**/api/settings');
-  const interval = page.getByLabel('Minimum Refresh Interval (minutes):', { exact: true });
-  await interval.fill('45');
+  const sent = page.waitForRequest('**/api/accounts/primary/settings');
+  const ignored = page.getByLabel('Ignore rewards by name', { exact: true });
+  await ignored.fill('Hat');
   await sent;
-  await expect(interval).toBeEnabled();
+  await expect(ignored).toBeEnabled();
   await expect(page.getByText(/^(Saving.*|Changes saved\.)$/)).toHaveCount(0);
-  await interval.fill('60');
+  await ignored.fill('Mask');
   release();
   await expect
-    .poll(
-      async () =>
-        (await (await request.get('/api/settings')).json()).minimum_refresh_interval_minutes,
-    )
-    .toBe(60);
-  await expect(interval).toHaveValue('60');
+    .poll(async () => (await (await request.get('/api/settings')).json()).drop_name_blacklist)
+    .toEqual(['Mask']);
+  await expect(ignored).toHaveValue('Mask');
   await expect(page.getByText('Changes saved.', { exact: true })).toHaveCount(0);
   await page.reload();
-  await expect(interval).toHaveValue('60');
+  await expect(ignored).toHaveValue('Mask');
 });
 
 test('manual game confirmation appends to the latest settings from another device', async ({
@@ -1802,20 +1818,15 @@ test('manual game confirmation appends to the latest settings from another devic
 });
 
 test('autosave survives reconnect and navigation', async ({ page, request }) => {
-  await page.goto('/settings#connection');
-  await page.getByLabel('Minimum Refresh Interval (minutes):', { exact: true }).fill('45');
+  await page.goto('/?edit=priorities');
+  await page.getByLabel('Ignore rewards by name', { exact: true }).fill('Mask');
   await request.post('/__test/reconnect', { headers, data: {} });
   await page.getByRole('link', { name: 'Mining', exact: true }).click();
   await expect
-    .poll(
-      async () =>
-        (await (await request.get('/api/settings')).json()).minimum_refresh_interval_minutes,
-    )
-    .toBe(45);
-  await page.goto('/settings#connection');
-  await expect(page.getByLabel('Minimum Refresh Interval (minutes):', { exact: true })).toHaveValue(
-    '45',
-  );
+    .poll(async () => (await (await request.get('/api/settings')).json()).drop_name_blacklist)
+    .toEqual(['Mask']);
+  await page.goto('/?edit=priorities');
+  await expect(page.getByLabel('Ignore rewards by name', { exact: true })).toHaveValue('Mask');
   await expect(page.getByRole('button', { name: 'Save changes', exact: true })).toHaveCount(0);
 });
 
@@ -1972,7 +1983,7 @@ test('history refreshes after claims and reports clear failure inside its dialog
   await page.getByText('Autumn expedition', { exact: true }).click();
   await expect(page.getByText('Canvas pack', { exact: true }).first()).toBeVisible();
   const history = await (await request.get('/api/history')).json();
-  await page.route('**/api/history', async (route) =>
+  await page.route('**/api/accounts/primary/history', async (route) =>
     route.fulfill({
       json: {
         ...(await (await route.fetch()).json()),
@@ -1996,7 +2007,7 @@ test('history refreshes after claims and reports clear failure inside its dialog
     },
   });
   await expect(page.getByText('New reward', { exact: true })).toBeVisible();
-  await page.route('**/api/cache/clear', (route) =>
+  await page.route('**/api/accounts/primary/cache/clear', (route) =>
     route.fulfill({ status: 500, json: { detail: 'failure' } }),
   );
   await page.goto('/settings#maintenance');
@@ -2121,7 +2132,7 @@ test('manual channel entry accepts a URL and optional timer without selecting ga
   await input.fill('https://www.twitch.tv/extra_streamer');
   await page.getByRole('spinbutton', { name: 'Auto mode after (minutes, optional)' }).fill('15');
   const selection = page.waitForRequest(
-    (r) => r.url().endsWith('/api/channels/select') && r.method() === 'POST',
+    (r) => r.url().endsWith('/api/accounts/primary/channels/select') && r.method() === 'POST',
   );
   await mine.click();
   expect((await selection).postDataJSON().duration_minutes).toBe(15);
@@ -2212,11 +2223,13 @@ test('autosave keeps text editing stable and blocks invalid values', async ({ pa
   await page.getByRole('link', { name: 'Connection', exact: true }).click();
   const interval = page.getByLabel('Minimum Refresh Interval (minutes):', { exact: true });
   await interval.fill('');
-  await expect(page.getByRole('alert')).toContainText('whole refresh interval');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  expect(await interval.evaluate((input: HTMLInputElement) => input.validity.valid)).toBe(false);
   expect((await (await request.get('/api/settings')).json()).minimum_refresh_interval_minutes).toBe(
     30,
   );
   await interval.fill('20');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect
     .poll(
       async () =>
@@ -2295,11 +2308,10 @@ test('touch dragging reorders game priorities', async ({ browser, request }) => 
 
 test('copy confirmation expires, restarts and ignores superseded code results', async ({
   page,
-  request,
 }) => {
   await page.clock.install();
   await page.goto('/settings');
-  await page.getByRole('button', { name: 'Log out of Twitch', exact: true }).click();
+  await page.getByRole('button', { name: 'Add account', exact: true }).click();
   const copy = page.getByRole('button', { name: 'Copy code', exact: true });
   const icon = copy.locator('path');
   await expect(copy).toBeVisible();
@@ -2322,7 +2334,7 @@ test('copy confirmation expires, restarts and ignores superseded code results', 
   await page.clock.runFor(1);
   await expect(icon).toHaveAttribute('d', mdiContentCopy);
   await expect(copy).toHaveAttribute('title', 'Copy code');
-  await expect(page.locator('#account [role="status"]')).toHaveCount(0);
+  await expect(page.locator('dialog [role="status"]')).toHaveCount(0);
 
   await copy.click();
   await expect(icon).toHaveAttribute('d', mdiCheck);
@@ -2348,15 +2360,9 @@ test('copy confirmation expires, restarts and ignores superseded code results', 
     });
   });
   await copy.click();
-  const updated = await request.post('/__test/event', {
-    headers,
-    data: {
-      event: 'oauth_code_required',
-      data: { code: 'REPLACED', url: 'https://www.twitch.tv/activate' },
-    },
-  });
-  expect(updated.ok()).toBe(true);
-  await expect(page.locator('#account code')).toHaveText('REPLACED');
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('button', { name: 'Add account', exact: true }).click();
+  await expect(page.locator('dialog code')).toHaveText('TESTCODE');
   await page.evaluate(() => document.dispatchEvent(new Event('finish-copy')));
   await page.clock.runFor(100);
   await expect(icon).toHaveAttribute('d', mdiContentCopy);
@@ -2364,31 +2370,22 @@ test('copy confirmation expires, restarts and ignores superseded code results', 
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
-test('authorization Done keeps one login status and preserves request errors', async ({
-  page,
-  request,
-}) => {
-  const login = {
-    status: 'Waiting for authentication...',
-    user_id: null,
-    oauth_pending: { code: 'TESTCODE', url: 'https://www.twitch.tv/activate' },
-  };
-  expect(
-    (
-      await request.post('/__test/event', {
-        headers,
-        data: { event: 'login_status', data: login },
-      })
-    ).ok(),
-  ).toBe(true);
+test('authorization Done keeps one login status and preserves request errors', async ({ page }) => {
   await page.goto('/settings#account');
-  const account = page.locator('#account');
-  const status = account.getByText(login.status, { exact: true });
+  await page.getByRole('button', { name: 'Add account', exact: true }).click();
+  const account = page.getByRole('dialog', { name: 'Add account', exact: true });
+  const status = account.locator('code');
   const done = account.getByRole('button', { name: 'Done', exact: true });
-  const result = account.locator('[role="status"], [role="alert"]');
+  const result = account.locator('[role="alert"]');
   let finish!: () => void;
   const pending = new Promise<void>((resolve) => (finish = resolve));
-  await page.route('**/api/oauth/confirm', async (route) => {
+  await expect(done).toBeVisible();
+  await page.route('**/api/accounts', async (route) => {
+    if (
+      route.request().method() !== 'POST' ||
+      route.request().postDataJSON().action !== 'confirm_login'
+    )
+      return route.continue();
     await pending;
     await route.fulfill({ status: 503, json: { detail: 'request_failed' } });
   });
@@ -2401,12 +2398,12 @@ test('authorization Done keeps one login status and preserves request errors', a
   }
   await expect(account.getByRole('alert')).toContainText('Request failed');
   await expect(done).toBeEnabled();
-  await page.unroute('**/api/oauth/confirm');
-  const confirmed = page.waitForResponse('**/api/oauth/confirm');
+  await page.unroute('**/api/accounts');
+  const confirmed = page.waitForResponse('**/api/accounts');
   await done.click();
   expect((await confirmed).ok()).toBe(true);
-  await expect(done).toBeEnabled();
-  await expect(status).toBeVisible();
+  await expect(account.getByRole('textbox', { name: 'Display label', exact: true })).toBeVisible();
+  await expect(done).toHaveCount(0);
   await expect(result).toHaveCount(0);
 });
 
@@ -2418,19 +2415,19 @@ for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await page.goto('/settings');
-    await page.getByRole('button', { name: 'Log out of Twitch', exact: true }).click();
+    await page.getByRole('button', { name: 'Add account', exact: true }).click();
     const copy = page.getByRole('button', { name: 'Copy code', exact: true });
     await expect(copy).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
     const layout = () =>
       page.evaluate(() => ({
-        accountHeight: document.querySelector('#account')!.getBoundingClientRect().height,
-        miningTop: document.querySelector('#account')!.getBoundingClientRect().top + scrollY,
+        accountHeight: document.querySelector('dialog[open]')!.getBoundingClientRect().height,
+        miningTop: document.querySelector('dialog[open]')!.getBoundingClientRect().top + scrollY,
       }));
     const before = await layout();
     await copy.click();
     await expect(copy).toHaveAttribute('title', 'Code copied');
-    await expect(page.locator('#account [role="status"]')).toHaveText('Code copied');
+    await expect(page.locator('dialog [role="status"]')).toHaveText('Code copied');
     await expect(copy.locator('path')).toHaveAttribute('d', mdiCheck);
     expect(await layout()).toEqual(before);
     await copy.click();
@@ -2447,7 +2444,7 @@ for (const width of [1280, 390, 320]) {
     await expect(error).toContainText('Could not copy');
     const row = await page.locator('.authorization-row').boundingBox();
     const notice = await error.boundingBox();
-    expect(notice!.y - row!.y - row!.height).toBe(12);
+    expect(notice!.y - row!.y - row!.height).toBe(16);
     await page.evaluate(() => {
       Object.defineProperty(navigator.clipboard, 'writeText', {
         value: () => Promise.resolve(),
@@ -2479,16 +2476,17 @@ test('icon actions and authorization row use compact accessible controls', async
     .poll(() => filters.evaluate((node) => getComputedStyle(node).backgroundColor))
     .toBe('rgb(51, 51, 51)');
   await page.goto('/settings');
-  await expect(page.locator('#account .account-identity')).toBeVisible();
-  await expect(page.locator('#account')).not.toContainText('Dashboard connected');
-  await expect(page.locator('#connection')).toContainText('Dashboard connected');
-  await page.getByRole('button', { name: 'Log out of Twitch', exact: true }).click();
+  await expect(page.locator('#settings-account summary')).toHaveCount(0);
+  await expect(page.locator('#settings-account .account-identity')).toBeVisible();
+  await expect(page.locator('#settings-account')).not.toContainText('Dashboard connected');
+
+  await page.getByRole('button', { name: 'Add account', exact: true }).click();
   await expect(page.getByText('Enter this code at:', { exact: true })).toHaveCount(0);
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.getByRole('button', { name: 'Copy code', exact: true }).click();
-  await expect(page.locator('#account .panel')).toHaveCount(0);
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('NEWCODE');
-  const code = await page.locator('#account code').locator('..').boundingBox();
+  await expect(page.locator('#settings-account .panel')).toHaveCount(0);
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('TESTCODE');
+  const code = await page.locator('dialog code').locator('..').boundingBox();
   const activate = await page.getByRole('link', { name: 'Twitch Activate' }).boundingBox();
   const done = await page.getByRole('button', { name: 'Done', exact: true }).boundingBox();
   expect(activate!.height).toBe(code!.height);
@@ -2508,7 +2506,7 @@ test('icon actions and authorization row use compact accessible controls', async
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
     const controls = await Promise.all([
-      page.locator('#account code').locator('..').boundingBox(),
+      page.locator('dialog code').locator('..').boundingBox(),
       page.getByRole('link', { name: 'Twitch Activate' }).boundingBox(),
       page.getByRole('button', { name: 'Done', exact: true }).boundingBox(),
     ]);
@@ -2628,7 +2626,7 @@ test('History shares sort, search, game filters and layout while paging recorded
 }) => {
   const original = (await (await request.get('/api/history')).json()).entries[0];
   let campaignCount = 27;
-  await page.route('**/api/history', async (route) =>
+  await page.route('**/api/accounts/primary/history', async (route) =>
     route.fulfill({
       json: {
         ...(await (await route.fetch()).json()),
@@ -2734,7 +2732,7 @@ test('an authoritative history clear removes cached claims even when reloading f
 }) => {
   await page.goto('/campaigns?tab=history');
   await expect(page.getByText('Autumn expedition', { exact: true })).toBeVisible();
-  await page.route('**/api/history', (route) =>
+  await page.route('**/api/accounts/primary/history', (route) =>
     route.fulfill({ status: 503, json: { detail: 'request_failed' } }),
   );
   expect((await request.post('/api/cache/clear', { headers, data: {} })).ok()).toBe(true);
@@ -2742,7 +2740,7 @@ test('an authoritative history clear removes cached claims even when reloading f
   await expect(page.getByText('Autumn expedition', { exact: true })).toHaveCount(0);
   await expect(page.locator('main .campaign-summary')).toHaveCount(0);
   expect((await (await request.get('/api/history')).json()).entries).toEqual([]);
-  await page.unroute('**/api/history');
+  await page.unroute('**/api/accounts/primary/history');
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
   await expect(page.getByText('No recorded claims yet', { exact: true })).toBeVisible();
 });

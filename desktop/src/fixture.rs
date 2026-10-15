@@ -1,14 +1,15 @@
 //! Offline native smoke test. This module is absent from production packages.
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 use tauri::Manager;
 use twitch_drops_miner_core::{
-    app::{AppError, Application, Command},
+    accounts::AccountManager,
+    app::{AppError, Application, Command, CommandRequest},
     dto::{MiningState, Snapshot},
-    runtime::Runtime,
 };
 
-pub async fn start(directory: PathBuf) -> anyhow::Result<Runtime> {
-    let (app, mut commands) = Application::open(directory)?;
+pub async fn start(directory: PathBuf) -> anyhow::Result<Arc<AccountManager>> {
+    let (accounts, commands) = AccountManager::open(directory)?;
+    let app = accounts.primary.clone();
     app.telegram.disable_for_fixture();
     let mut snapshot: Snapshot =
         serde_json::from_str(include_str!("../../frontend/tests/fixture.json"))?;
@@ -16,11 +17,29 @@ pub async fn start(directory: PathBuf) -> anyhow::Result<Runtime> {
     app.data.save_settings(&snapshot.settings.values)?;
     *app.settings.write().await = snapshot.settings.values.clone();
     *app.snapshot.write().await = snapshot;
-    let owned = app.clone();
+    accounts.fixture_observe().await;
+    accounts.fixture_profiles(vec![]).await?;
+    worker(&accounts, app, commands);
+    Ok(accounts)
+}
+
+pub async fn pending_workers(accounts: &Arc<AccountManager>) {
+    for (app, commands) in accounts.fixture_pending_workers().await {
+        worker(accounts, app, commands);
+    }
+}
+
+fn worker(
+    accounts: &Arc<AccountManager>,
+    owned: Arc<Application>,
+    mut commands: tokio::sync::mpsc::Receiver<CommandRequest>,
+) {
+    let shutdown = accounts.shutdown.clone();
     let worker = tokio::spawn(async move {
         loop {
             let request = tokio::select! {
                 biased;
+                _ = shutdown.cancelled() => break,
                 _ = owned.shutdown.cancelled() => break,
                 value = commands.recv() => { let Some(value) = value else { break; }; value },
             };
@@ -32,11 +51,37 @@ pub async fn start(directory: PathBuf) -> anyhow::Result<Runtime> {
                     MiningState::Watching
                 };
             }
+            if matches!(request.command, Command::Logout) {
+                twitch_drops_miner_core::twitch::oauth::Session::remove(&owned.data.path)
+                    .expect("fixture session removal");
+                owned.cancel_notifications();
+                owned.snapshot.write().await.login = Default::default();
+            }
             let _ = request.complete.send(Ok(()));
         }
-        Ok(())
     });
-    Ok(Runtime::fixture(app, worker))
+    accounts.fixture_worker(worker);
+}
+
+#[tauri::command]
+pub async fn smoke_account_state(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    stop: Option<String>,
+) -> Result<Option<String>, crate::ipc::Error> {
+    crate::ipc::local(&window)?;
+    let state = app.state::<crate::Desktop>();
+    if let Some(id) = stop {
+        let accounts = state.accounts().await?;
+        accounts
+            .account(&id)
+            .await
+            .map_err(AppError::from)?
+            .shutdown
+            .cancel();
+        accounts.overview().await;
+    }
+    Ok(state.selected.read().unwrap().clone())
 }
 
 #[tauri::command]
@@ -70,7 +115,9 @@ pub async fn smoke_result(
         eprintln!("Native smoke failed: {error}");
         app.exit(1);
     } else {
-        println!("Native smoke passed: snapshot, pause/resume, settings and inline updates");
+        println!(
+            "Native smoke passed: snapshot, pause/resume, settings, inline updates and account recovery"
+        );
         app.exit(0);
     }
     Ok(())

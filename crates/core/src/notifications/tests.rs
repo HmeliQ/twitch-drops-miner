@@ -11,10 +11,84 @@ fn update(service: &Telegram) -> Update {
         enabled: true,
         remote_control: false,
         include_image: false,
+        notification_accounts: None,
         token: "123:secret_token".into(),
         chat_id: "42".into(),
         remove: false,
     }
+}
+
+#[tokio::test]
+async fn account_selection_is_durable_and_filters_claims_without_disabling_test_messages() {
+    let server = MockServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let (mut app, _commands) = Application::open(dir.path().into()).unwrap();
+    Arc::get_mut(&mut Arc::get_mut(&mut app).unwrap().telegram)
+        .unwrap()
+        .endpoint = server.uri();
+    let mut config = update(&app.telegram);
+    config.notification_accounts = Some(vec![2]);
+    app.save_telegram(config).await.unwrap();
+    app.snapshot.write().await.login.user_id = Some(1);
+    assert_eq!(
+        Telegram::open(dir.path())
+            .unwrap()
+            .view()
+            .notification_accounts,
+        Some(vec![2])
+    );
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true})))
+        .mount(&server)
+        .await;
+    for (selection, expected) in [
+        (Some(vec![2]), 0),
+        (Some(vec![]), 0),
+        (Some(vec![1]), 1),
+        (None, 2),
+    ] {
+        let mut config = update(&app.telegram);
+        config.notification_accounts = selection;
+        app.save_telegram(config).await.unwrap();
+        let (sender, receiver) = broadcast::channel(4);
+        sender
+            .send(Notification {
+                title: "Drop claimed".into(),
+                message: "Reward".into(),
+                claim: Some(Claim {
+                    cancel: CancellationToken::new(),
+                    account: 1,
+                    drop_id: "reward".into(),
+                    game: "Game".into(),
+                    campaign: "Campaign".into(),
+                    reward: "Reward".into(),
+                    image_url: String::new(),
+                    epoch: app.telegram.epoch(),
+                }),
+            })
+            .ok()
+            .unwrap();
+        drop(sender);
+        run_claims(app.clone(), receiver).await;
+        assert_eq!(server.received_requests().await.unwrap().len(), expected);
+    }
+    let mut config = update(&app.telegram);
+    config.notification_accounts = Some(vec![]);
+    app.save_telegram(config).await.unwrap();
+    app.test_telegram().await.unwrap();
+    assert_eq!(server.received_requests().await.unwrap().len(), 3);
+    for ids in [vec![0], vec![1; 101]] {
+        let config = Config {
+            notification_accounts: Some(ids),
+            ..Config::default()
+        };
+        assert!(!config.valid());
+    }
+    let legacy: Config =
+        serde_json::from_value(json!({"enabled":false,"token":"","chat_id":""})).unwrap();
+    assert!(legacy.notification_accounts.is_none());
+    app.shutdown.cancel();
+    app.drain_writes().await;
 }
 
 #[tokio::test]
@@ -334,7 +408,9 @@ async fn test_delivery_does_not_discard_claims_and_clears_old_errors() {
     let server = MockServer::start().await;
     let dir = tempfile::tempdir().unwrap();
     let (mut app, _) = Application::open(dir.path().into()).unwrap();
-    Arc::get_mut(&mut app).unwrap().telegram.endpoint = server.uri();
+    Arc::get_mut(&mut Arc::get_mut(&mut app).unwrap().telegram)
+        .unwrap()
+        .endpoint = server.uri();
     let mut config = update(&app.telegram);
     config.include_image = true;
     app.save_telegram(config).await.unwrap();
@@ -367,6 +443,7 @@ async fn test_delivery_does_not_discard_claims_and_clears_old_errors() {
         title: "Drop claimed".into(),
         message: "Reward".into(),
         claim: Some(Claim {
+            cancel: CancellationToken::new(),
             account: 1,
             drop_id: "new-drop".into(),
             game: "Game".into(),
@@ -520,7 +597,9 @@ async fn worker_deduplicates_claims_and_never_exposes_internal_metadata() {
     let server = MockServer::start().await;
     let dir = tempfile::tempdir().unwrap();
     let (mut app, _) = Application::open(dir.path().into()).unwrap();
-    Arc::get_mut(&mut app).unwrap().telegram.endpoint = server.uri();
+    Arc::get_mut(&mut Arc::get_mut(&mut app).unwrap().telegram)
+        .unwrap()
+        .endpoint = server.uri();
     let mut config = update(&app.telegram);
     config.include_image = true;
     app.save_telegram(config).await.unwrap();
@@ -535,6 +614,7 @@ async fn worker_deduplicates_claims_and_never_exposes_internal_metadata() {
         title: "Drop claimed".into(),
         message: "Reward".into(),
         claim: Some(Claim {
+            cancel: CancellationToken::new(),
             account: 1,
             drop_id: "drop".into(),
             game: "Game".into(),
@@ -677,6 +757,7 @@ async fn optional_reward_preview_preserves_text_and_only_shares_public_twitch_ar
 #[test]
 fn claim_message_escapes_names_and_bounds_them_before_formatting() {
     let mut claim = Claim {
+        cancel: CancellationToken::new(),
         account: 1,
         drop_id: "drop".into(),
         game: "Shakes & Fidget".into(),

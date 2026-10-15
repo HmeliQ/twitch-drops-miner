@@ -65,7 +65,7 @@ test.beforeEach(async ({ page }) => {
               handler?: number;
               action?: string;
               folder?: string;
-              request?: { kind: string };
+              request?: { kind: string; value?: { revision?: number | null } };
             } = {},
           ) => {
             if (command === 'plugin:event|listen') {
@@ -75,10 +75,34 @@ test.beforeEach(async ({ page }) => {
             if (command === 'app_request') {
               if (args.request?.kind === 'auth_status')
                 return { enabled: false, authenticated: true };
+              if (args.request?.kind === 'accounts') {
+                if (args.request.value?.revision != null) return new Promise(() => {});
+                return {
+                  instance: 'offline',
+                  revision: 1,
+                  limit: 20,
+                  login: null,
+                  accounts: [
+                    {
+                      id: 'primary',
+                      label: '',
+                      user_id: snapshot.login.user_id,
+                      name: 'Offline account',
+                      connected: true,
+                      unavailable: false,
+                      unassigned: false,
+                      paused: false,
+                      mining: 'watching',
+                      settings_revision: snapshot.settings.revision,
+                    },
+                  ],
+                };
+              }
               if (args.request?.kind === 'settings') return snapshot.settings;
               throw new Error('Unexpected fixture request');
             }
-            if (command === 'state_open') return { type: 'snapshot', value: snapshot };
+            if (command === 'state_open')
+              return { type: 'snapshot', value: { ...snapshot, account_id: 'primary' } };
             if (command === 'state_next') return new Promise(() => {});
             if (command === 'desktop_settings')
               return {
@@ -141,9 +165,10 @@ for (const width of [1280, 390]) {
     const updates = page.getByRole('region', { name: 'App updates' });
     const check = updates.getByRole('button', { name: 'Check for updates', exact: true });
     await expect(updates.getByTitle('Installed version: 2.0.1')).toHaveText('v2.0.1');
+    await expect(updates.getByTitle('Installed version: 2.0.1')).toHaveClass(/text-accent/);
     await expect(updates.getByRole('status')).toHaveText("You're up to date.");
-    await expect(page.locator('#maintenance details')).toHaveCount(0);
-    await expect(page.locator('#maintenance')).not.toContainText(
+    await expect(page.locator('#settings-maintenance details')).toHaveCount(0);
+    await expect(page.locator('#settings-maintenance')).not.toContainText(
       'This application automatically mines',
     );
     await page.screenshot({ path: `../artifacts/desktop-updates-current-${width}.png` });

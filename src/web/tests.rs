@@ -87,6 +87,122 @@ impl Drop for TestApp {
 }
 
 #[tokio::test]
+async fn account_routes_isolate_mutations_reject_ambiguous_legacy_calls_and_keep_auth_guards() {
+    let directory = tempfile::tempdir().unwrap();
+    let second = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    crate::store::atomic_json(
+        &directory.path().join("accounts.json"),
+        &json!({"version":1,"telegram_account":"primary","accounts":[
+            {"id":"primary","user_id":42,"label":"First","enabled":true,"removed":false},
+            {"id":second,"user_id":73,"label":"Second","enabled":true,"removed":false}
+        ]}),
+    )
+    .unwrap();
+    let (app, commands) = App::open(directory.path().into(), "").unwrap();
+    // No sessions exist: managed runtimes wait for an explicit login without constructing HTTP clients.
+    app.accounts.start(commands).await;
+    let test = TestApp {
+        router: router(app.clone()),
+        app: app.clone(),
+        _directory: directory,
+        worker: tokio::spawn(async {}),
+    };
+    let path = format!("/api/accounts/{second}/settings");
+    let headers = [("x-tdm-request", "1")];
+    assert_eq!(
+        test.call(
+            Method::POST,
+            "/api/settings",
+            json!({"mining_paused":true}),
+            "",
+            &headers
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        test.call(
+            Method::POST,
+            &path,
+            json!({"games_to_watch":["Rust"]}),
+            "",
+            &headers
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert!(app.settings.read().await.games_to_watch.is_empty());
+    assert_eq!(
+        app.accounts
+            .account(second)
+            .await
+            .unwrap()
+            .settings
+            .read()
+            .await
+            .games_to_watch,
+        ["Rust"]
+    );
+    let token = test.enable().await;
+    assert_eq!(
+        test.call(Method::GET, "/api/accounts", json!({}), "", &[])
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        test.call(Method::GET, &path, json!({}), "", &[]).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        test.call(
+            Method::POST,
+            &path,
+            json!({"mining_paused":true}),
+            &token,
+            &[]
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        test.call(
+            Method::POST,
+            "/api/accounts",
+            json!({"action":"remove","id":second}),
+            &token,
+            &[]
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        test.call(
+            Method::GET,
+            "/api/accounts/missing/settings",
+            json!({}),
+            &token,
+            &[]
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    let overview = test
+        .call(Method::GET, "/api/accounts", json!({}), &token, &[])
+        .await;
+    let overview: Value = serde_json::from_slice(&overview.2).unwrap();
+    assert_eq!(overview["accounts"].as_array().unwrap().len(), 2);
+    assert!(!overview.to_string().contains("access_token"));
+    app.accounts.shutdown().await;
+    app.sockets.close().await;
+}
+
+#[tokio::test]
 async fn refresh_acknowledgement_does_not_mean_completion_and_requests_coalesce() {
     use crate::dto::RefreshState;
     let test = TestApp::new("");
@@ -656,7 +772,7 @@ async fn concurrent_settings_edits_conflict_and_failed_writes_preserve_revision(
         .call(
             Method::POST,
             "/api/settings",
-            json!({"revision":revision,"connection_quality":4}),
+            json!({"revision":revision,"mining_paused":true}),
             "",
             &headers,
         )
@@ -664,14 +780,8 @@ async fn concurrent_settings_edits_conflict_and_failed_writes_preserve_revision(
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(test.app.snapshot.read().await.settings.revision, revision);
     assert_eq!(
-        test.app
-            .snapshot
-            .read()
-            .await
-            .settings
-            .values
-            .connection_quality,
-        saved.connection_quality
+        test.app.snapshot.read().await.settings.values.mining_paused,
+        saved.mining_paused
     );
 }
 

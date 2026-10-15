@@ -2,16 +2,34 @@ use std::sync::atomic::Ordering;
 
 use tauri::{Emitter, Manager};
 use tokio::sync::watch;
-use twitch_drops_miner_core::dto::{MiningState, Snapshot};
+use twitch_drops_miner_core::dto::MiningState;
+#[cfg(test)]
+use twitch_drops_miner_core::dto::Snapshot;
 
 use crate::Desktop;
 
-pub fn needed(enabled: bool, snapshot: &Snapshot) -> bool {
+#[cfg(test)]
+fn needed(enabled: bool, snapshot: &Snapshot) -> bool {
+    active(
+        enabled,
+        snapshot.login.user_id.is_some(),
+        snapshot.settings.values.mining_paused,
+        snapshot.mining.state,
+    )
+}
+
+pub fn any_needed(enabled: bool, accounts: &[twitch_drops_miner_core::accounts::Summary]) -> bool {
+    accounts.iter().any(|account| {
+        !account.unavailable && active(enabled, account.connected, account.paused, account.mining)
+    })
+}
+
+fn active(enabled: bool, connected: bool, paused: bool, state: MiningState) -> bool {
     enabled
-        && snapshot.login.user_id.is_some()
-        && !snapshot.settings.values.mining_paused
+        && connected
+        && !paused
         && matches!(
-            snapshot.mining.state,
+            state,
             MiningState::Watching | MiningState::AwaitingProgress | MiningState::ManualWatching
         )
 }

@@ -12,6 +12,7 @@ pub struct PublishedState {
     value: RwLock<Snapshot>,
     changed: watch::Sender<u64>,
     instance: String,
+    account_id: String,
 }
 
 impl PublishedState {
@@ -21,6 +22,7 @@ impl PublishedState {
         value.instance = instance.clone();
         value.revision = 1;
         Ok(Self {
+            account_id: value.account_id.clone(),
             value: RwLock::new(value),
             changed: watch::channel(1).0,
             instance,
@@ -70,6 +72,7 @@ impl Drop for Publication<'_> {
     fn drop(&mut self) {
         self.value.protocol = PROTOCOL;
         self.value.instance.clone_from(&self.owner.instance);
+        self.value.account_id.clone_from(&self.owner.account_id);
         self.owner.changed.send_modify(|revision| {
             *revision += 1;
             self.value.revision = *revision;

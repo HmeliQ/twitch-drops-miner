@@ -1,3 +1,4 @@
+import { Link } from '../../app/accountNavigation';
 import {
   createContext,
   useCallback,
@@ -11,7 +12,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { mdiDownload } from '@mdi/js';
 import { Icon } from '@mdi/react';
-import { Link, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 import { useT } from '../../shared/lib/i18n';
 import { isDesktop } from '../../shared/lib/platform';
 import { Button, ProgressBar } from '../../shared/ui';
@@ -162,7 +163,6 @@ export function DesktopUpdates() {
       <UpdateCheck
         version={status?.current_version}
         checking={status?.phase === 'checking'}
-        current={!failure && status?.phase === 'current'}
         disabled={busy || status?.phase === 'ready' || status?.restart_required}
         onCheck={() => void action('check')}
       >

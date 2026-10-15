@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMiner } from '../../app/MinerProvider';
 import { useT } from '../../shared/lib/i18n';
-import { request } from '../../shared/lib/api';
 import type { Campaign, HistoryEntry } from '../../shared/lib/types';
 import type { CampaignSort } from './Campaigns';
 import { dateTime } from '../../shared/ui/index';
 import { CampaignSummary } from './Campaign';
 
 export function useHistory(active: boolean) {
-  const { connected, data, historyRevision } = useMiner();
+  const { connected, data, historyRevision, request } = useMiner();
   const [loaded, setLoaded] = useState<{
     entries: HistoryEntry[];
     instance: string;

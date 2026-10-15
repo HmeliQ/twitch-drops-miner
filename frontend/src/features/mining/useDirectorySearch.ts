@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react';
 import { request } from '../../shared/lib/api';
+import { useMiner } from '../../app/MinerProvider';
 import type { GameMetadata } from '../../shared/lib/types';
 
-export async function lookupGames(names: string[], signal: AbortSignal): Promise<GameMetadata[]> {
+export async function lookupGames(
+  names: string[],
+  signal: AbortSignal,
+  scopedRequest: typeof request = request,
+): Promise<GameMetadata[]> {
   const games: GameMetadata[] = [];
   let batch: string[] = [];
   let bytes = 0;
@@ -11,7 +16,7 @@ export async function lookupGames(names: string[], signal: AbortSignal): Promise
     const length = encoder.encode(name).length;
     if (batch.length && (!name || batch.length === 100 || bytes + length > 4000)) {
       games.push(
-        ...(await request<GameMetadata[]>('/api/games', { names: batch }, 'POST', signal)),
+        ...(await scopedRequest<GameMetadata[]>('/api/games', { names: batch }, 'POST', signal)),
       );
       batch = [];
       bytes = 0;
@@ -30,6 +35,7 @@ export function useDirectorySearch<T>(
   connected: boolean,
   user: number | null | undefined,
 ) {
+  const { request } = useMiner();
   const [attempt, retry] = useState(0);
   const [result, setResult] = useState<{
     query: string;
@@ -54,7 +60,7 @@ export function useDirectorySearch<T>(
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [path, term, connected, user, attempt]);
+  }, [path, term, connected, user, attempt, request]);
   const current =
     result?.query === term && result.user === user && connected && user ? result : null;
   return {

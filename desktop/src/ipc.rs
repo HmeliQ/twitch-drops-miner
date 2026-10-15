@@ -26,6 +26,13 @@ pub struct Error {
 impl From<AppError> for Error {
     fn from(value: AppError) -> Self {
         let status = match value {
+            AppError::Account(error) => {
+                if matches!(error, twitch_drops_miner_core::accounts::Error::NotFound) {
+                    404
+                } else {
+                    409
+                }
+            }
             AppError::Telegram(error) => {
                 if error == twitch_drops_miner_core::notifications::Error::Conflict {
                     409
@@ -66,6 +73,12 @@ pub fn local(window: &WebviewWindow) -> Result<(), Error> {
     deny_unknown_fields
 )]
 pub enum Request {
+    Accounts {
+        instance: Option<String>,
+        revision: Option<u64>,
+    },
+    AccountAction(Box<twitch_drops_miner_core::accounts::Request>),
+    Connection,
     AuthStatus,
     Settings,
     SaveSettings(Value),
@@ -90,11 +103,50 @@ pub enum Request {
 }
 
 impl Request {
+    fn global(&self) -> bool {
+        matches!(
+            self,
+            Self::Accounts { .. }
+                | Self::AccountAction(_)
+                | Self::Connection
+                | Self::AuthStatus
+                | Self::Telegram
+                | Self::TelegramBot
+                | Self::SaveTelegram(_)
+                | Self::TestTelegram
+                | Self::VerifyProxy { .. }
+        )
+    }
     async fn run(self, app: Arc<Application>) -> Result<Value, AppError> {
-        if app.shutdown.is_cancelled() {
+        if !self.global() && app.shutdown.is_cancelled() {
             return Err(AppError::ShuttingDown);
         }
         match self {
+            Self::Accounts { instance, revision } => {
+                if instance.as_ref().is_some_and(|value| value.len() > 64) {
+                    return Err(AppError::InvalidRequest);
+                }
+                let accounts = app.accounts().ok_or(AppError::Unavailable)?;
+                return Ok(json!(
+                    accounts
+                        .wait_overview(instance.as_deref(), revision, &accounts.shutdown)
+                        .await?
+                ));
+            }
+            Self::AccountAction(request) => {
+                let accounts = app.accounts().ok_or(AppError::Unavailable)?;
+                let result = accounts.request(*request).await?;
+                #[cfg(feature = "desktop-fixture")]
+                crate::fixture::pending_workers(&accounts).await;
+                return Ok(result);
+            }
+            Self::Connection => {
+                return Ok(app
+                    .accounts()
+                    .ok_or(AppError::Unavailable)?
+                    .connection()
+                    .await);
+            }
             Self::AuthStatus => {
                 return Ok(
                     json!({"enabled":false,"authenticated":true,"translations":ENGLISH["gui"]["auth"]}),
@@ -133,6 +185,7 @@ pub async fn app_request(
     state: State<'_, Desktop>,
     request: Request,
     id: String,
+    account: Option<String>,
 ) -> Result<Value, Error> {
     local(&window)?;
     if id.is_empty() || id.len() > 64 {
@@ -152,7 +205,19 @@ pub async fn app_request(
         requests.insert(id.clone(), cancel.clone());
     }
     let result = async {
-        let app = state.application().await?;
+        let manager = state.accounts().await?;
+        let app = if request.global() {
+            if account.is_some() {
+                return Err(AppError::InvalidRequest.into());
+            }
+            manager.primary.clone()
+        } else {
+            match account {
+                Some(id) => manager.account(&id).await,
+                None => manager.sole_account().await,
+            }
+            .map_err(AppError::from)?
+        };
         tokio::select! {
             biased;
             _ = cancel.cancelled() => Err(AppError::ShuttingDown.into()),
@@ -178,6 +243,7 @@ pub async fn cancel_request(
 }
 
 pub struct Subscription {
+    app: Arc<Application>,
     id: String,
     cancel: CancellationToken,
     previous: Mutex<Snapshot>,
@@ -195,22 +261,31 @@ pub async fn state_open(
     window: WebviewWindow,
     state: State<'_, Desktop>,
     id: String,
+    account: Option<String>,
 ) -> Result<Publication, Error> {
     local(&window)?;
     if id.len() > 64 || id.is_empty() {
         return Err(AppError::InvalidRequest.into());
     }
-    let app = state.application().await?;
+    let manager = state.accounts().await?;
+    let app = match account {
+        Some(id) => manager.account(&id).await,
+        None => manager.sole_account().await,
+    }
+    .map_err(AppError::from)?;
     let snapshot = app.snapshot.read().await.clone();
     let mut slot = state.subscription.lock().await;
     if let Some(previous) = slot.take() {
         previous.cancel.cancel();
     }
     *slot = Some(Arc::new(Subscription {
+        app: app.clone(),
         id,
         cancel: app.shutdown.child_token(),
         previous: Mutex::new(snapshot.clone()),
     }));
+    *state.selected.write().unwrap() = Some(app.account_id.clone());
+    state.selected_changed.notify_one();
     Ok(Publication::Snapshot(Box::new(snapshot)))
 }
 
@@ -226,6 +301,8 @@ pub async fn state_close(
         && let Some(value) = slot.take()
     {
         value.cancel.cancel();
+        *state.selected.write().unwrap() = None;
+        state.selected_changed.notify_one();
     }
     Ok(())
 }
@@ -238,7 +315,6 @@ pub async fn state_next(
     resync: bool,
 ) -> Result<Publication, Error> {
     local(&window)?;
-    let app = state.application().await?;
     let subscription = state
         .subscription
         .lock()
@@ -247,11 +323,12 @@ pub async fn state_next(
         .filter(|value| value.id == id)
         .cloned()
         .ok_or(AppError::Unavailable)?;
-    subscription.next(&app, resync).await
+    subscription.next(resync).await
 }
 
 impl Subscription {
-    async fn next(&self, app: &Application, resync: bool) -> Result<Publication, Error> {
+    async fn next(&self, resync: bool) -> Result<Publication, Error> {
+        let app = &self.app;
         let mut previous = self
             .previous
             .try_lock()
@@ -333,22 +410,23 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (app, _commands) = Application::open(dir.path().into()).unwrap();
         let subscription = Subscription {
+            app: app.clone(),
             id: "test".into(),
             cancel: app.shutdown.child_token(),
             previous: Mutex::new(app.snapshot.read().await.clone()),
         };
         app.snapshot.write().await.status = "first".into();
         app.snapshot.write().await.status = "second".into();
-        let Publication::Patch(patch) = subscription.next(&app, false).await.unwrap() else {
+        let Publication::Patch(patch) = subscription.next(false).await.unwrap() else {
             panic!()
         };
         assert_eq!(patch.base_revision, 1);
         assert_eq!(patch.revision, 3);
         assert!(matches!(
-            subscription.next(&app, true).await.unwrap(),
+            subscription.next(true).await.unwrap(),
             Publication::Snapshot(_)
         ));
         app.shutdown.cancel();
-        assert!(subscription.next(&app, false).await.is_err());
+        assert!(subscription.next(false).await.is_err());
     }
 }

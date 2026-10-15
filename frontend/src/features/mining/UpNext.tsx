@@ -1,4 +1,5 @@
-import { useId, useState } from 'react';
+import { useEffect, useId } from 'react';
+import { useAccountState } from '../../app/accounts';
 import { Icon } from '@mdi/react';
 import { mdiChevronDown, mdiChevronRight } from '@mdi/js';
 import type { Snapshot, WantedGame } from '../../shared/lib/types';
@@ -12,12 +13,13 @@ const gameKey = (game: WantedGame) => String(game.game_id ?? game.game_key ?? ga
 export function useUpNextState(data: Snapshot | null) {
   const keys = data?.wanted_items.map(gameKey) ?? [];
   const scope = JSON.stringify([data?.instance, data?.login.user_id]);
-  const [state, setState] = useState({ scope, keys, expanded: keys.slice(0, 1) });
+  const [state, setState] = useAccountState('up-next', { scope, keys, expanded: keys.slice(0, 1) });
   let current = state;
   if (
-    scope !== state.scope ||
-    keys.length !== state.keys.length ||
-    keys.some((key, index) => key !== state.keys[index])
+    data &&
+    (scope !== state.scope ||
+      keys.length !== state.keys.length ||
+      keys.some((key, index) => key !== state.keys[index]))
   ) {
     current = {
       scope,
@@ -29,8 +31,10 @@ export function useUpNextState(data: Snapshot | null) {
               (key) => state.expanded.includes(key) || (key === keys[0] && key !== state.keys[0]),
             ),
     };
-    setState(current);
   }
+  useEffect(() => {
+    if (current !== state) setState(current);
+  }, [current, state, setState]);
   return {
     expanded: current.expanded,
     toggle(key: string) {

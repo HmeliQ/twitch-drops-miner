@@ -33,7 +33,8 @@
   min-height: 80px;
 }
 .account-trigger {
-  padding: 6px;
+  padding-block: 6px;
+  padding-inline: 6px 0;
 }
 .account-trigger:hover {
   background: var(--color-field);
@@ -156,6 +157,9 @@
       position-try-fallbacks: flip-block, flip-inline;
     }
   }
+}
+dialog .help-popover {
+  height: max-content;
 }
 .campaign-workspace {
   display: grid;

@@ -34,7 +34,10 @@ test('mining preferences keeps detailed rules in accessible help without changin
   await request.post('/api/settings', { headers, data: { mining_priority_mode: 'short_events' } });
   let writes = 0;
   page.on('request', (request) => {
-    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/settings')
+    if (
+      request.method() === 'POST' &&
+      new URL(request.url()).pathname === '/api/accounts/primary/settings'
+    )
       writes++;
   });
   for (const viewport of [
@@ -210,12 +213,13 @@ test('Settings tabs keep their position, drafts and browser history', async ({ p
     await page.setViewportSize({ width, height: 700 });
     await page.goto('/settings#account');
     const tabs = page.getByRole('navigation', { name: 'Settings sections' });
+    await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
     const top = (await tabs.boundingBox())!.y;
     await tabs.getByRole('link', { name: 'Dashboard access' }).click();
     await page
       .getByLabel('New password (at least 8 characters)', { exact: true })
       .fill('unsaved-draft');
-    for (const name of ['Connection', 'Maintenance', 'Twitch account', 'Dashboard access']) {
+    for (const name of ['Connection', 'Maintenance', 'Accounts', 'Dashboard access']) {
       await tabs.getByRole('link', { name, exact: true }).click();
       expect((await tabs.boundingBox())!.y).toBeCloseTo(top, 0);
       await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeInViewport();
@@ -225,7 +229,7 @@ test('Settings tabs keep their position, drafts and browser history', async ({ p
       page.getByLabel('New password (at least 8 characters)', { exact: true }),
     ).toHaveValue('unsaved-draft');
     await page.goBack();
-    await expect(tabs.getByRole('link', { name: 'Twitch account' })).toHaveAttribute(
+    await expect(tabs.getByRole('link', { name: 'Accounts' })).toHaveAttribute(
       'aria-current',
       'page',
     );
@@ -360,7 +364,7 @@ test('Available rewards show claims once with truthful times and uncropped artwo
     headers,
     data: { event: 'initial_state', data: { ...fixture, campaigns: [campaign] } },
   });
-  await page.route('**/api/history', async (route) =>
+  await page.route('**/api/accounts/primary/history', async (route) =>
     route.fulfill({ json: { ...(await (await route.fetch()).json()), entries } }),
   );
   await page.goto('/');

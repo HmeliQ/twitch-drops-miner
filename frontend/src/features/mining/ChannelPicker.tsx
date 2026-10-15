@@ -2,7 +2,6 @@ import { useCallback, useId, useLayoutEffect, useRef, useState } from 'react';
 import { mdiPlus, mdiPlayCircleOutline, mdiReload } from '@mdi/js';
 import { useMiner } from '../../app/MinerProvider';
 import { useT } from '../../shared/lib/i18n';
-import { request } from '../../shared/lib/api';
 import type { ChannelSearchResult } from '../../shared/lib/types';
 import { IconButton, Input, Notice, useAction } from '../../shared/ui';
 import SearchPicker from '../../shared/ui/SearchPicker';
@@ -17,7 +16,7 @@ export default function ChannelPicker({
   onOpenChange: (open: boolean) => void;
   action: ReturnType<typeof useAction>;
 }) {
-  const { data, connected } = useMiner();
+  const { data, connected, request } = useMiner();
   const t = useT();
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
