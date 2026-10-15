@@ -1,5 +1,12 @@
 # Changelog
 
+## [v2.4.0-rc.1](https://github.com/ohne-b/twitch-drops-miner/releases/tag/v2.4.0-rc.1) — 2026-10-15
+
+- mine with multiple Twitch accounts at once on desktop and server, with separate mining preferences, progress and history ([#125](https://github.com/ohne-b/twitch-drops-miner/pull/125))
+- add account switching, bulk pause/resume and copying mining preferences, while keeping single-account controls compact ([#125](https://github.com/ohne-b/twitch-drops-miner/pull/125))
+- control accounts through one Telegram bot and choose which accounts send claim notifications ([#125](https://github.com/ohne-b/twitch-drops-miner/pull/125))
+- fix mobile profile artwork and show the account name and badges beside a compact round avatar ([#126](https://github.com/ohne-b/twitch-drops-miner/pull/126))
+
 ## [v2.3.0](https://github.com/ohne-b/twitch-drops-miner/releases/tag/v2.3.0) — 2026-10-14
 
 - add optional confirmed-progress percentages in Mining preferences ([#118](https://github.com/ohne-b/twitch-drops-miner/pull/118))
