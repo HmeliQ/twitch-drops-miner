@@ -49,7 +49,7 @@ export default function AccountSwitcher({ compact = false }: { compact?: boolean
           <AccountIdentity compact profile={data.login.profile} name={current.label || undefined} />
         </span>
       ) : current ? (
-        <Art url={current.avatar_url} className="size-10! rounded-full! lg:size-8!" />
+        <Art url={current.avatar_url} className="size-9! rounded-full! lg:size-8!" />
       ) : (
         <Icon path={mdiAccountMultipleOutline} className="mdi-icon" />
       )}

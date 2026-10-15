@@ -84,8 +84,8 @@ for (const viewport of [
       await page.goto('/');
       const link = page.locator('.brand-row').getByRole('link', { name: 'Manage accounts' });
       const avatar = link.locator('img').first();
-      await expect(avatar).toHaveCSS('width', '40px');
-      await expect(avatar).toHaveCSS('height', '40px');
+      await expect(avatar).toHaveCSS('width', '36px');
+      await expect(avatar).toHaveCSS('height', '36px');
       const badge = link.getByRole('img', { name: 'Event badge', exact: true });
       await expect(badge).toBeVisible();
       await expect(badge.locator('img')).toHaveCSS('width', '18px');

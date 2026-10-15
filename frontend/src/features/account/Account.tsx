@@ -36,11 +36,11 @@ export default function AccountIdentity({
       {profile?.avatar_url ? (
         <Art
           url={profile.avatar_url}
-          className={compact ? 'size-10! rounded-full! lg:size-8!' : 'size-12! rounded-full!'}
+          className={compact ? 'size-9! rounded-full! lg:size-8!' : 'size-12! rounded-full!'}
         />
       ) : (
         <span
-          className={`grid shrink-0 place-items-center rounded-full bg-raised text-muted ${compact ? 'size-10 lg:size-8' : 'size-12'}`}
+          className={`grid shrink-0 place-items-center rounded-full bg-raised text-muted ${compact ? 'size-9 lg:size-8' : 'size-12'}`}
         >
           <Icon path={mdiAccountOutline} className="size-5" />
         </span>
