@@ -479,7 +479,9 @@ test('back navigation and copied campaign links retain their original account', 
   await expect(page).toHaveURL(new RegExp(`account=${second}`));
   await page.goBack();
   await expect(page).toHaveURL(/account=primary/);
-  await expect(page.locator('.account-trigger')).toContainText('Twitch 123456');
+  await expect(page.locator('.account-trigger').filter({ visible: true })).toContainText(
+    'Twitch 123456',
+  );
   await page.getByRole('link', { name: 'Mining', exact: true }).click();
   await expect(page.locator('#mining-drop-details')).toHaveAttribute('href', /account=primary/);
   await switchTo(page, 'Account 2');
@@ -496,7 +498,9 @@ test('an unavailable account stops subscriptions and Retry reconnects the same s
 }) => {
   await seed(request);
   await page.goto(`/settings?account=${second}#account`);
-  await expect(page.locator('.account-trigger')).toContainText('Account 2');
+  await expect(page.locator('.account-trigger').filter({ visible: true })).toContainText(
+    'Account 2',
+  );
   expect(
     (
       await request.post('/__test/event', {
@@ -546,7 +550,9 @@ test('offline account management disables writes and reconnects without changing
   }
   await expect(add).toBeEnabled();
   await expect(pause).toBeEnabled();
-  await expect(page.locator('.account-trigger')).toContainText('Account 2');
+  await expect(page.locator('.account-trigger').filter({ visible: true })).toContainText(
+    'Account 2',
+  );
   await expect(page).toHaveURL(new RegExp(`account=${second}`));
 });
 

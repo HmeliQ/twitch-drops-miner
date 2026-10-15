@@ -483,13 +483,16 @@ dialog .help-popover {
   }
   .app-sidebar:has(.desktop-update-link) {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 128px);
     align-items: center;
+  }
+  .app-sidebar:has(.desktop-update-link) .brand-row {
+    padding-right: 0;
   }
   .brand-row {
     min-height: 60px;
   }
-  .brand-row img {
+  .brand-logo {
     height: 32px;
     width: 25px;
   }
@@ -536,6 +539,11 @@ dialog .help-popover {
     margin-inline: 12px;
     padding: 14px 0;
     flex-wrap: wrap;
+  }
+}
+@media (max-width: 639px) {
+  .app-sidebar:has(.desktop-update-link) .brand-name {
+    display: none;
   }
 }
 @layer base {
