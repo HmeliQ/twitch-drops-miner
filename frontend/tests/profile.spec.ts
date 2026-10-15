@@ -81,7 +81,25 @@ for (const viewport of [
       await link.focus();
       await link.press('Enter');
     } else {
-      await page.goto('/settings#account');
+      await page.goto('/');
+      const link = page.locator('.brand-row').getByRole('link', { name: 'Manage accounts' });
+      const avatar = link.locator('img').first();
+      await expect(avatar).toHaveCSS('width', '36px');
+      await expect(avatar).toHaveCSS('height', '36px');
+      const badge = link.getByRole('img', { name: 'Event badge', exact: true });
+      await expect(badge).toBeVisible();
+      await expect(badge.locator('img')).toHaveCSS('width', '18px');
+      await expect(badge.locator('img')).toHaveCSS('height', '18px');
+      const name = link.getByText('Northwind', { exact: true });
+      await expect(name).toBeVisible();
+      expect(await name.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+        true,
+      );
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(viewport.width);
+      await page
+        .locator('.brand-row')
+        .screenshot({ path: `../artifacts/account-header-${viewport.width}.png` });
+      await link.click();
     }
     await expect(page).toHaveURL(/\/settings#account$/);
     const settings = page.locator('#settings-account');

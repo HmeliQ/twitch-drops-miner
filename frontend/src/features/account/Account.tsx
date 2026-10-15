@@ -17,7 +17,13 @@ export default function AccountIdentity({
 }) {
   const t = useT();
   const badges = profile?.badges.map((badge) => (
-    <span key={badge.id} role="img" aria-label={badge.title} title={badge.title}>
+    <span
+      key={badge.id}
+      className="shrink-0"
+      role="img"
+      aria-label={badge.title}
+      title={badge.title}
+    >
       <Art
         url={badge.image_url}
         fit="contain"
@@ -30,11 +36,11 @@ export default function AccountIdentity({
       {profile?.avatar_url ? (
         <Art
           url={profile.avatar_url}
-          className={compact ? 'size-8! rounded-full!' : 'size-12! rounded-full!'}
+          className={compact ? 'size-9! rounded-full! lg:size-8!' : 'size-12! rounded-full!'}
         />
       ) : (
         <span
-          className={`grid shrink-0 place-items-center rounded-full bg-raised text-muted ${compact ? 'size-8' : 'size-12'}`}
+          className={`grid shrink-0 place-items-center rounded-full bg-raised text-muted ${compact ? 'size-9 lg:size-8' : 'size-12'}`}
         >
           <Icon path={mdiAccountOutline} className="size-5" />
         </span>
