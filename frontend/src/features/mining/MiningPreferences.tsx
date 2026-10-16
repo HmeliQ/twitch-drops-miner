@@ -275,6 +275,22 @@ export default function MiningPreferences() {
                   disabled={!connected}
                   onChange={(value) => change('show_progress_percentage', value)}
                 />
+                <Field label={t('progress_time_format')}>
+                  <select
+                    className="field"
+                    value={draft.progress_time_format}
+                    disabled={!connected}
+                    onChange={(event) =>
+                      change(
+                        'progress_time_format',
+                        event.target.value as SettingsData['progress_time_format'],
+                      )
+                    }
+                  >
+                    <option value="minutes">{t('progress_time_minutes')}</option>
+                    <option value="hours_minutes">{t('progress_time_hours_minutes')}</option>
+                  </select>
+                </Field>
                 <fieldset
                   disabled={!connected}
                   aria-label={t('auto_mine_types')}

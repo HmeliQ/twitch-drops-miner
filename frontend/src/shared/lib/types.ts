@@ -96,6 +96,7 @@ export interface Settings {
   mining_paused: boolean;
   auto_claim_drops: boolean;
   show_progress_percentage: boolean;
+  progress_time_format: 'minutes' | 'hours_minutes';
   mining_priority_mode: 'manual' | 'short_events' | 'ending_soonest';
   auto_mine_badges: boolean;
   auto_mine_emotes: boolean;

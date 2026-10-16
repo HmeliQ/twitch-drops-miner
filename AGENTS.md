@@ -563,6 +563,10 @@ embed it and run without a build tool/runtime companion. Production builds never
   Share rounding with the window/tray title: truncate to one decimal place, omit trailing
   .0, and never round incomplete progress up to 100%. Omit percentages for unknown progress
   or invalid watch requirements; do not interpolate between confirmed updates.
+  Progress time format is an account display preference in Mining preferences, defaulting
+  to Minutes. Hours and minutes uses compact durations such as 5h 30m / 6h in Now mining
+  and campaign details, including unknown-progress zero values. Share formatting across both
+  wrappers, preserve numeric progress/claims, and exclude it from mining-preference copying.
   Render strings as React text, validate external links/artwork, expand Twitch image placeholders.
   No injected HTML or CDN scripts. Art provides safe missing/broken-image fallbacks.
   Reward thumbnails contain their artwork; game covers retain cover sizing. Phone checkbox
