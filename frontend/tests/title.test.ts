@@ -40,7 +40,25 @@ it('keeps exact integer percentages without rounding incomplete progress up', ()
   }
   data.current_drop!.confirmed_minutes = 59;
   data.current_drop!.required_minutes = 60;
-  expect(miningTitle(data, true, t)).toBe('98% Rust - Drops Miner');
+  expect(miningTitle(data, true, t)).toBe('98.3% Rust - Drops Miner');
+});
+
+it.each([
+  [501, 1000, 50.1],
+  [502, 1000, 50.2],
+  [503, 1000, 50.3],
+  [1, 3, 33.3],
+  [9999, 10000, 99.9],
+  [-1, 60, 0],
+  [61, 60, 100],
+])('formats %i of %i confirmed minutes as %s percent', (minutes, required, expected) => {
+  expect(
+    confirmedPercent({
+      ...fixture.current_drop,
+      confirmed_minutes: minutes,
+      required_minutes: required,
+    }),
+  ).toBe(expected);
 });
 
 it('omits percentages without confirmed minutes and a valid watch requirement', () => {

@@ -27,9 +27,6 @@ for (const width of [1440, 390]) {
     await expect(mining.getByText('42 / 60 min (70%)', { exact: true })).toBeVisible();
     await page.reload();
     await expect(mining.getByText('42 / 60 min (70%)', { exact: true })).toBeVisible();
-    await page.screenshot({ path: `../artifacts/progress-percentage-${width}.png` });
-    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-
     await request.post('/__test/event', {
       headers,
       data: {
@@ -37,7 +34,28 @@ for (const width of [1440, 390]) {
         data: { ...fixture.current_drop, confirmed_minutes: 59, current_minutes: 60 },
       },
     });
-    await expect(mining.getByText('59 / 60 min (98%)', { exact: true })).toBeVisible();
+    await expect(mining.getByText('59 / 60 min (98.3%)', { exact: true })).toBeVisible();
+    await expect(page).toHaveTitle('98.3% Rust - Drops Miner');
+    for (const minutes of [501, 502, 503]) {
+      await request.post('/__test/event', {
+        headers,
+        data: {
+          event: 'drop_progress',
+          data: {
+            ...fixture.current_drop,
+            confirmed_minutes: minutes,
+            current_minutes: 600,
+            required_minutes: 1000,
+          },
+        },
+      });
+      await expect(
+        mining.getByText(`${minutes} / 1000 min (${minutes / 10}%)`, { exact: true }),
+      ).toBeVisible();
+      await expect(page).toHaveTitle(`${minutes / 10}% Rust - Drops Miner`);
+    }
+    await page.screenshot({ path: `../artifacts/progress-percentage-${width}.png` });
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await request.post('/__test/event', {
       headers,
       data: { event: 'drop_progress', data: { ...fixture.current_drop, confirmed_at: null } },
