@@ -11,6 +11,7 @@ for (const width of [1440, 390]) {
   }) => {
     await request.post('/__test/reset', { headers, data: {} });
     await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
     const mining = page.getByRole('region', { name: 'Now mining', exact: true });
     await expect(mining.getByText('42 / 60 min', { exact: true })).toBeVisible();
@@ -53,11 +54,10 @@ for (const width of [1440, 390]) {
         mining.getByText(`${minutes} / 1000 min (${minutes / 10}%)`, { exact: true }),
       ).toBeVisible();
       await expect(page).toHaveTitle(`${minutes / 10}% Rust - Drops Miner`);
+      await expect(mining.getByRole('progressbar')).toHaveAttribute('aria-valuenow', `${minutes}`);
+      await expect(mining.getByRole('progressbar')).toHaveAttribute('aria-valuemax', '1000');
     }
-    await page.screenshot({
-      path: `../artifacts/progress-percentage-${width}.png`,
-      animations: 'disabled',
-    });
+    await page.screenshot({ path: `../artifacts/progress-percentage-${width}.png` });
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await request.post('/__test/event', {
       headers,
