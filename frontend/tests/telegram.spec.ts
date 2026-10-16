@@ -241,9 +241,9 @@ test('Telegram account selection saves independently from remote control and sur
   await selector.press('Escape');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
-  const saved = await (await request.get('/api/telegram')).json();
-  expect(saved.notification_accounts).toEqual([123456]);
-  expect(saved.remote_control).toBe(true);
+  await expect
+    .poll(async () => (await request.get('/api/telegram')).json())
+    .toMatchObject({ notification_accounts: [123456], remote_control: true });
   await page.reload();
   await expect(selector).toHaveText('1 account');
   await selector.click();
