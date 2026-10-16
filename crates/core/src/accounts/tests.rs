@@ -251,7 +251,8 @@ async fn copying_preferences_preserves_target_pause_display_connection_and_claim
     manager
         .primary
         .update_settings(
-            json!({"games_to_watch":["Rust"],"auto_claim_drops":false,"inventory_list_view":true}),
+            json!({"games_to_watch":["Rust"],"auto_claim_drops":false,"inventory_list_view":true,
+                "progress_time_format":"hours_minutes"}),
         )
         .await
         .unwrap();
@@ -273,6 +274,10 @@ async fn copying_preferences_preserves_target_pause_display_connection_and_claim
     assert_eq!(settings.games_to_watch, ["Rust"]);
     assert!(settings.mining_paused && settings.auto_claim_drops);
     assert!(!settings.inventory_list_view);
+    assert_eq!(
+        settings.progress_time_format,
+        crate::config::ProgressTimeFormat::Minutes
+    );
     manager.shutdown().await;
 }
 

@@ -18,7 +18,7 @@ import {
 import { InventoryRefreshButton } from '../../shared/ui/InventoryRefreshButton';
 import { useMiner } from '../../app/MinerProvider';
 import { useT } from '../../shared/lib/i18n';
-import { confirmedPercent } from '../../shared/lib/progress';
+import { confirmedPercent, formatProgressTime } from '../../shared/lib/progress';
 import {
   Art,
   IconButton,
@@ -199,10 +199,12 @@ export default function Mining({ upNext }: { upNext: ReturnType<typeof useUpNext
                   title={progress.confirmed_at ? undefined : t('progress_unknown')}
                   aria-description={progress.confirmed_at ? undefined : t('progress_unknown')}
                 >
-                  {t('minutes_progress', {
-                    current: progress.confirmed_at ? (progress.confirmed_minutes ?? 0) : 0,
-                    total: progress.required_minutes,
-                  })}
+                  {formatProgressTime(
+                    progress.confirmed_at ? (progress.confirmed_minutes ?? 0) : 0,
+                    progress.required_minutes,
+                    (autosave.draft ?? data.settings).progress_time_format,
+                    t,
+                  )}
                   {percent !== null && ` (${percent}%)`}
                 </span>
               </div>

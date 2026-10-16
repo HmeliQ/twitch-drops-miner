@@ -57,7 +57,7 @@ for (const viewport of [
         .getByRole('link', { name: 'Manage accounts', exact: true })
         .filter({ visible: true });
       await expect(link).toBeVisible();
-      const avatar = link.locator('img').first();
+      const avatar = link.locator('.account-identity img').first();
       const badge = link.getByRole('img', { name: 'Event badge', exact: true });
       const name = link.getByText('Northwind', { exact: true });
       await expect(avatar).toBeVisible();
@@ -83,7 +83,7 @@ for (const viewport of [
     } else {
       await page.goto('/');
       const link = page.locator('.brand-row').getByRole('link', { name: 'Manage accounts' });
-      const avatar = link.locator('img').first();
+      const avatar = link.locator('.account-identity img').first();
       await expect(avatar).toHaveCSS('width', '36px');
       await expect(avatar).toHaveCSS('height', '36px');
       const badge = link.getByRole('img', { name: 'Event badge', exact: true });

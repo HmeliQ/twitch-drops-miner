@@ -78,6 +78,14 @@ pub enum MiningPriorityMode {
     EndingSoonest,
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProgressTimeFormat {
+    #[default]
+    Minutes,
+    HoursMinutes,
+}
+
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Settings {
@@ -86,6 +94,7 @@ pub struct Settings {
     pub mining_paused: bool,
     pub auto_claim_drops: bool,
     pub show_progress_percentage: bool,
+    pub progress_time_format: ProgressTimeFormat,
     pub mining_priority_mode: MiningPriorityMode,
     pub auto_mine_badges: bool,
     pub auto_mine_emotes: bool,
@@ -106,6 +115,7 @@ impl Default for Settings {
             mining_paused: false,
             auto_claim_drops: true,
             show_progress_percentage: false,
+            progress_time_format: ProgressTimeFormat::Minutes,
             mining_priority_mode: MiningPriorityMode::Manual,
             auto_mine_badges: false,
             auto_mine_emotes: false,
@@ -435,6 +445,31 @@ mod tests {
             old.patched(&json!({"show_progress_percentage":"true"}))
                 .is_err()
         );
+    }
+
+    #[test]
+    fn progress_time_format_defaults_to_minutes_and_round_trips() {
+        let old = Settings::from_saved(json!({"games_to_watch":["Rust"]})).unwrap();
+        assert_eq!(old.progress_time_format, ProgressTimeFormat::Minutes);
+        for format in [
+            ProgressTimeFormat::HoursMinutes,
+            ProgressTimeFormat::Minutes,
+        ] {
+            let saved = old
+                .patched(&json!({"progress_time_format":format}))
+                .unwrap()
+                .patched(&json!({"show_progress_percentage":true}))
+                .unwrap();
+            let restored = Settings::from_saved(serde_json::to_value(&saved).unwrap()).unwrap();
+            assert_eq!(restored.progress_time_format, format);
+            assert!(restored.show_progress_percentage);
+            assert_eq!(restored.games_to_watch, ["Rust"]);
+        }
+        for value in [json!("clock"), json!(true), json!(1), json!({})] {
+            let invalid = json!({"progress_time_format":value});
+            assert!(old.patched(&invalid).is_err());
+            assert!(Settings::from_saved(invalid).is_err());
+        }
     }
 
     #[test]

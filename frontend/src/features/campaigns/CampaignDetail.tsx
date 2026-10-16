@@ -7,6 +7,7 @@ import type { Campaign } from '../../shared/lib/types';
 import type { HistoryCampaign } from './History';
 import { safeUrl } from '../../shared/lib/api';
 import { useT } from '../../shared/lib/i18n';
+import { formatProgressTime } from '../../shared/lib/progress';
 import { Art, Empty, IconButton, Notice, ProgressBar, dateTime } from '../../shared/ui/index';
 
 export function CampaignDetail({
@@ -26,7 +27,7 @@ export function CampaignDetail({
 }) {
   const campaign = historyOnly ? undefined : liveCampaign;
   const priority = campaign && !campaign.finished && !campaign.expired ? campaign.priority : null;
-  const { data, connected } = useMiner();
+  const { data, connected, autosave } = useMiner();
   const mining =
     connected &&
     data?.login.user_id &&
@@ -249,10 +250,12 @@ export function CampaignDetail({
                           title={drop.confirmed_at ? undefined : t('progress_unknown')}
                           aria-description={drop.confirmed_at ? undefined : t('progress_unknown')}
                         >
-                          {t('minutes_progress', {
-                            current: drop.confirmed_at ? (drop.confirmed_minutes ?? 0) : 0,
-                            total: drop.required_minutes,
-                          })}
+                          {formatProgressTime(
+                            drop.confirmed_at ? (drop.confirmed_minutes ?? 0) : 0,
+                            drop.required_minutes,
+                            (autosave.draft ?? data?.settings)?.progress_time_format,
+                            t,
+                          )}
                         </p>
                       </div>
                     )}
