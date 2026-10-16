@@ -1,5 +1,10 @@
 # Changelog
 
+## [v2.4.0-rc.2](https://github.com/ohne-b/twitch-drops-miner/releases/tag/v2.4.0-rc.2) — 2026-10-16
+
+- show fractional confirmed-progress percentages in Now mining, browser and desktop window titles, and the tray status ([#129](https://github.com/ohne-b/twitch-drops-miner/pull/129))
+- add a Mining preferences choice between minutes and hours/minutes for progress in Now mining and campaign details, keeping minutes as the default ([#130](https://github.com/ohne-b/twitch-drops-miner/pull/130))
+
 ## [v2.4.0-rc.1](https://github.com/ohne-b/twitch-drops-miner/releases/tag/v2.4.0-rc.1) — 2026-10-15
 
 - mine with multiple Twitch accounts at once on desktop and server, with separate mining preferences, progress and history ([#125](https://github.com/ohne-b/twitch-drops-miner/pull/125))
