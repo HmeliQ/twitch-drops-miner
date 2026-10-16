@@ -12,5 +12,5 @@ export function confirmedPercent(
     progress.required_minutes <= 0
   )
     return null;
-  return Math.floor(Math.min(100, Math.max(0, (minutes * 100) / progress.required_minutes)));
+  return Math.floor(Math.min(1000, Math.max(0, (minutes * 1000) / progress.required_minutes))) / 10;
 }
