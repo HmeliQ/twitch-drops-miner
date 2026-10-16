@@ -54,7 +54,10 @@ for (const width of [1440, 390]) {
       ).toBeVisible();
       await expect(page).toHaveTitle(`${minutes / 10}% Rust - Drops Miner`);
     }
-    await page.screenshot({ path: `../artifacts/progress-percentage-${width}.png` });
+    await page.screenshot({
+      path: `../artifacts/progress-percentage-${width}.png`,
+      animations: 'disabled',
+    });
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await request.post('/__test/event', {
       headers,
