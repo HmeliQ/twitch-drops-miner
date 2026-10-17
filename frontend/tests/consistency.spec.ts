@@ -209,7 +209,7 @@ test('Activity aligns rows with optional details and lets longer messages grow',
 });
 
 test('Settings tabs keep their position, drafts and browser history', async ({ page }) => {
-  for (const width of [1440, 390]) {
+  for (const width of [1440, 1024]) {
     await page.setViewportSize({ width, height: 700 });
     await page.goto('/settings#account');
     const tabs = page.getByRole('navigation', { name: 'Settings sections' });
@@ -466,7 +466,13 @@ test('Campaigns keeps the total beside refresh and gives search the full phone w
     await page.setViewportSize({ width, height: 844 });
     for (const tab of ['', '?tab=history']) {
       await page.goto(`/campaigns${tab}`);
-      const tabs = (await page.getByRole('navigation', { name: 'Campaign views' }).boundingBox())!;
+      const navigation = page.getByRole('navigation', { name: 'Campaign views' });
+      const tabs = (await navigation.boundingBox())!;
+      for (const link of await navigation.getByRole('link').all()) {
+        await expect(link).toHaveCSS('border-top-width', '0px');
+        await expect(link).toHaveCSS('border-radius', '4px');
+        expect((await link.boundingBox())!.height).toBe(width < 1024 ? 44 : 40);
+      }
       const refresh = (await page
         .getByRole('button', { name: 'Refresh inventory', exact: true })
         .boundingBox())!;

@@ -26,36 +26,49 @@ export function DesktopSettings() {
     void refresh();
   }, []);
   return (
-    <div className="space-y-3">
-      {settings &&
-        (
-          ['autostart', 'start_minimized', 'close_to_tray', 'keep_awake', 'notifications'] as const
-        ).map((key) => (
-          <Check
-            key={key}
-            label={t(`gui.desktop.${key}`)}
-            checked={settings[key]}
-            disabled={
-              action.busy ||
-              (!settings.tray_available && (key === 'start_minimized' || key === 'close_to_tray'))
-            }
-            onChange={(value) =>
-              void action.run(async () =>
-                setSettings(await invoke('desktop_settings', { change: { [key]: value } })),
-              )
-            }
-          />
-        ))}
+    <div className="grid gap-4">
+      {settings && (
+        <div className="grid gap-1">
+          {(
+            [
+              'autostart',
+              'start_minimized',
+              'close_to_tray',
+              'keep_awake',
+              'notifications',
+            ] as const
+          ).map((key) => (
+            <Check
+              key={key}
+              label={t(`gui.desktop.${key}`)}
+              checked={settings[key]}
+              disabled={
+                action.busy ||
+                (!settings.tray_available && (key === 'start_minimized' || key === 'close_to_tray'))
+              }
+              onChange={(value) =>
+                void action.run(async () =>
+                  setSettings(await invoke('desktop_settings', { change: { [key]: value } })),
+                )
+              }
+            />
+          ))}
+        </div>
+      )}
       {settings && !settings.tray_available && (
         <p className="muted">{t('gui.desktop.tray_unavailable')}</p>
       )}
       <ActionResult action={action} />
       {!settings && (
-        <Button disabled={action.busy} onClick={() => void refresh()}>
+        <Button
+          className="justify-self-start"
+          disabled={action.busy}
+          onClick={() => void refresh()}
+        >
           {t('retry')}
         </Button>
       )}
-      <div className="flex flex-wrap gap-2 pt-2">
+      <div className="flex flex-wrap gap-2">
         <Button
           title={t('gui.desktop.open_data')}
           aria-label={t('gui.desktop.open_data')}

@@ -1,4 +1,4 @@
-import { Link, NavLink } from './accountNavigation';
+import { Link, NavLink, useAccountPath } from './accountNavigation';
 import { DesktopUpdateLink, DesktopUpdateProvider } from '../features/settings/DesktopUpdates';
 import { isDesktop } from '../shared/lib/platform';
 import { DesktopStartupError, DesktopStatus } from '../features/settings/Desktop';
@@ -56,6 +56,7 @@ function Shell({ auth, onLogout }: { auth: AuthStatus; onLogout: () => Promise<v
     };
   }, [title]);
   const location = useLocation();
+  const preferencesPath = useAccountPath('/?edit=priorities');
   const navigationType = useNavigationType();
   const previousLocation = useRef(location);
   const [logoutError, setLogoutError] = useState(false);
@@ -68,6 +69,18 @@ function Shell({ auth, onLogout }: { auth: AuthStatus; onLogout: () => Promise<v
   useEffect(() => {
     const previous = previousLocation.current;
     previousLocation.current = location;
+    if (
+      navigationType === 'POP' &&
+      previous.state?.preferencesFromSettings === true &&
+      location.pathname === '/settings'
+    ) {
+      const frame = requestAnimationFrame(() => {
+        const trigger = document.getElementById('settings-link-mining');
+        if (trigger?.getClientRects().length) trigger.focus({ preventScroll: true });
+        window.scrollTo(0, 0);
+      });
+      return () => cancelAnimationFrame(frame);
+    }
     const origin = previous.state?.campaignReturn;
     if (
       navigationType === 'POP' &&
@@ -226,7 +239,11 @@ function Shell({ auth, onLogout }: { auth: AuthStatus; onLogout: () => Promise<v
                 path="/settings"
                 element={
                   location.hash === '#mining' ? (
-                    <Navigate to="/?edit=priorities" replace />
+                    <Navigate
+                      to={preferencesPath}
+                      state={{ preferencesFromSettings: true }}
+                      replace
+                    />
                   ) : (
                     <Settings auth={auth} />
                   )

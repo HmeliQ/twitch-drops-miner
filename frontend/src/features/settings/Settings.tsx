@@ -5,7 +5,7 @@ import UpdateCheck from './UpdateCheck';
 import { isDesktop } from '../../shared/lib/platform';
 import { DesktopSettings } from './Desktop';
 import { Icon } from '@mdi/react';
-import { useLocation } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   mdiAccountOutline,
@@ -14,6 +14,9 @@ import {
   mdiWrenchOutline,
   mdiMonitor,
   mdiBellOutline,
+  mdiTune,
+  mdiArrowLeft,
+  mdiChevronRight,
 } from '@mdi/js';
 import type { AuthStatus, ReleaseInfo } from '../../shared/lib/types';
 import { request, safeUrl } from '../../shared/lib/api';
@@ -27,25 +30,23 @@ import {
   Button,
   Dialog,
   Field,
+  HelpButton,
   Input,
   Notice,
   useAction,
 } from '../../shared/ui/index';
 function Section({
   id,
-  help,
   children,
   hidden = false,
 }: {
   id: string;
-  help?: string;
   children: ReactNode;
   hidden?: boolean;
 }) {
   return (
-    <section id={`settings-${id}`} hidden={hidden} className="scroll-mt-6 space-y-5 pb-8">
-      {help && <p className="max-w-2xl text-[13px] leading-relaxed text-muted">{help}</p>}
-      <div className="space-y-4">{children}</div>
+    <section id={`settings-${id}`} hidden={hidden} className="grid min-w-0 grid-cols-1 gap-4">
+      {children}
     </section>
   );
 }
@@ -83,11 +84,14 @@ function Access({
     });
   }
   return (
-    <Section hidden={hidden} id="access" help={t('gui.auth.help')}>
-      <p className="muted">{t(auth.enabled ? 'gui.auth.enabled' : 'gui.auth.disabled')}</p>
+    <Section hidden={hidden} id="access">
+      <div className="flex items-center gap-1">
+        <p className="muted">{t(auth.enabled ? 'gui.auth.enabled' : 'gui.auth.disabled')}</p>
+        <HelpButton label={t('access')} text={t('gui.auth.help')} />
+      </div>
       {disabled && <Notice>{t('save_first')}</Notice>}
       <form
-        className="max-w-md space-y-4"
+        className="grid max-w-md gap-4"
         onSubmit={(event) => {
           event.preventDefault();
           void save(auth.enabled ? 'change' : 'enable');
@@ -185,7 +189,7 @@ function ReleaseNotice({ disabled }: { disabled: boolean }) {
   const available = release?.check_succeeded && release.update_available;
   const releaseUrl = available ? safeUrl(release.download_url) : undefined;
   return (
-    <div className="space-y-3 text-[13px]">
+    <div className="grid gap-4 text-[13px]">
       <UpdateCheck
         version={release?.current_version}
         checking={busy}
@@ -211,7 +215,12 @@ function ReleaseNotice({ disabled }: { disabled: boolean }) {
         )}
       </UpdateCheck>
       {available && !busy && releaseUrl && (
-        <a className="text-link inline-block" href={releaseUrl} target="_blank" rel="noreferrer">
+        <a
+          className="text-link justify-self-start"
+          href={releaseUrl}
+          target="_blank"
+          rel="noreferrer"
+        >
           {t('release_notes')}
         </a>
       )}
@@ -224,14 +233,53 @@ function SettingsContent({ auth }: { auth: AuthStatus }) {
   const accounts = useAccounts();
   const t = useT();
   const location = useLocation();
+  const navigate = useNavigate();
+  const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 1023px)').matches);
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 1023px)');
+    const resize = () => setCompact(media.matches);
+    media.addEventListener('change', resize);
+    return () => media.removeEventListener('change', resize);
+  }, []);
+  const sections = [
+    ['mining', mdiTune, 'mining_preferences'],
+    ['account', mdiAccountOutline, 'accounts'],
+    ['notifications', mdiBellOutline, 'notifications'],
+    ['connection', mdiLanConnect, 'connection'],
+    isDesktop()
+      ? ['desktop', mdiMonitor, 'gui.desktop.tab']
+      : ['access', mdiShieldLockOutline, 'access'],
+    ['maintenance', mdiWrenchOutline, 'maintenance'],
+  ] as const;
   const section =
-    [
-      'account',
-      isDesktop() ? 'desktop' : 'access',
-      'connection',
-      'notifications',
-      'maintenance',
-    ].find((id) => `#${id}` === location.hash) ?? 'account';
+    sections.find(([id]) => `#${id}` === location.hash)?.[0] ?? (compact ? null : 'account');
+  useEffect(() => {
+    if (!compact && !location.hash)
+      void navigate(
+        { pathname: location.pathname, search: location.search, hash: '#account' },
+        { replace: true, state: location.state },
+      );
+  }, [compact, location, navigate]);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const navigation = useRef<HTMLElement>(null);
+  const previousSection = useRef(section);
+  useEffect(() => {
+    const returning =
+      location.state?.settingsFocus === 'mining' && (!compact || !section)
+        ? 'mining'
+        : compact && !section
+          ? previousSection.current
+          : null;
+    window.scrollTo(0, 0);
+    if (returning) {
+      navigation.current
+        ?.querySelector<HTMLAnchorElement>(`[data-section="${returning}"]`)
+        ?.focus({ preventScroll: true });
+    } else if (compact) {
+      heading.current?.focus({ preventScroll: true });
+    }
+    previousSection.current = section;
+  }, [section, compact, location.key]);
   const [confirmation, setConfirmation] = useState<{
     title: string;
     text: string;
@@ -240,31 +288,43 @@ function SettingsContent({ auth }: { auth: AuthStatus }) {
   const command = useAction();
   const dirty = autosave.pending || autosave.busy;
   return (
-    <div className="flex max-w-4xl flex-col gap-8">
-      <div>
-        <h1 className="text-[22px] font-semibold">{t('gui.tabs.settings')}</h1>
-      </div>
+    <div className="flex max-w-5xl flex-col gap-6 lg:gap-8">
+      <header className="flex items-center gap-3">
+        {compact && section && (
+          <Link
+            to="/settings"
+            className="icon-button"
+            aria-label={t('back_to_settings')}
+            title={t('back_to_settings')}
+          >
+            <Icon path={mdiArrowLeft} className="mdi-icon" />
+          </Link>
+        )}
+        <h1 ref={heading} tabIndex={-1} className="text-[22px] font-semibold">
+          {t(
+            compact && section ? sections.find(([id]) => id === section)![2] : 'gui.tabs.settings',
+          )}
+        </h1>
+      </header>
       <nav
+        ref={navigation}
+        hidden={compact && section !== null}
         aria-label={t('settings_sections')}
-        className="flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-muted"
+        className="settings-navigation text-[13px] text-muted"
       >
-        {(
-          [
-            ['account', mdiAccountOutline],
-            isDesktop() ? ['desktop', mdiMonitor] : ['access', mdiShieldLockOutline],
-            ['connection', mdiLanConnect],
-            ['notifications', mdiBellOutline],
-            ['maintenance', mdiWrenchOutline],
-          ] as const
-        ).map(([id, icon]) => (
+        {sections.map(([id, icon, label]) => (
           <Link
             className={`settings-tab ${section === id ? 'active' : ''}`}
             aria-current={section === id ? 'page' : undefined}
             key={id}
-            to={`#${id}`}
+            id={`settings-link-${id}`}
+            data-section={id}
+            to={id === 'mining' ? '/?edit=priorities' : `#${id}`}
+            state={id === 'mining' ? { preferencesFromSettings: true } : undefined}
           >
             <Icon path={icon} className="mdi-icon" />
-            {t(id === 'desktop' ? 'gui.desktop.tab' : id === 'account' ? 'accounts' : id)}
+            {t(label)}
+            {compact && <Icon path={mdiChevronRight} className="mdi-icon ms-auto" />}
           </Link>
         ))}
       </nav>
@@ -327,7 +387,7 @@ function SettingsContent({ auth }: { auth: AuthStatus }) {
           </details>
         )}
         <ActionResult action={command} />
-        <div className="space-y-2 pt-2 text-[13px] text-muted">
+        <div className="space-y-2 text-[13px] text-muted">
           <p>
             {t('help_link_accounts')}{' '}
             <a

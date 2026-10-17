@@ -264,7 +264,12 @@ test('only the game list scrolls while desktop preferences controls stay in plac
     await expect(results).toBeHidden();
     await expect(firstMatchHandle).toBeInViewport({ ratio: 0.99 });
     await page.screenshot({ path: `../artifacts/preferences-search-${viewport.width}.png` });
-    await page.getByRole('button', { name: 'Add Game', exact: true }).click();
+    await search.focus();
+    await expect(page.locator('#priorities fieldset[aria-busy]')).toHaveAttribute(
+      'aria-busy',
+      'false',
+    );
+    await search.press('Enter');
     await expect(page.getByRole('alert')).toContainText('Choose a game from the results.');
     await match.scrollIntoViewIfNeeded();
     await expect(match).toBeInViewport({ ratio: 0.99 });
@@ -449,17 +454,22 @@ test('simplified captions and settings retain progress, recovery and refresh con
       await expect(
         page.getByRole('button', { name: /^(Refresh inventory|Refreshing\.\.\.)$/ }),
       ).toHaveCount(0);
-      const tabs = (await page
-        .getByRole('navigation', { name: 'Settings sections' })
-        .boundingBox())!;
+      const tabs = page.getByRole('navigation', { name: 'Settings sections' });
+      if (width < 1024) {
+        await expect(tabs).toBeHidden();
+        await expect(page.getByRole('link', { name: 'Back to Settings' })).toBeVisible();
+      }
+      const anchor = (await (
+        width >= 1024 ? tabs : page.getByRole('heading', { level: 1 }).locator('..')
+      ).boundingBox())!;
       await expect(content.getByRole('heading')).toHaveText(
         section === 'account' ? ['Badges'] : [],
       );
       const first = (await content.locator(':scope > :first-child').boundingBox())!;
-      const offset = first.y - tabs.y - tabs.height;
+      const offset = first.y - anchor.y - anchor.height;
       contentOffset ??= offset;
       expect(offset).toBeCloseTo(contentOffset, 0);
-      expect(first.x).toBeCloseTo(tabs.x, 0);
+      expect(first.x).toBeCloseTo(anchor.x, 0);
       await page.screenshot({
         path: `../artifacts/settings-${section}-${width}.png`,
         fullPage: true,

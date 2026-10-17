@@ -475,7 +475,7 @@ for (const width of [1280, 320]) {
         },
       });
     });
-    await page.goto('/settings');
+    await page.goto('/settings#account');
     const account = page.locator('#settings-account');
     const identity = account.locator('.account-identity');
     const logout = account.getByRole('button', { name: 'Sign out Twitch 123456', exact: true });
@@ -493,6 +493,7 @@ for (const width of [1280, 320]) {
     await expect(account.getByText('Twitch ID: 123456', { exact: true })).toHaveCount(0);
     await account.screenshot({ path: `../artifacts/account-controls-${width}.png` });
 
+    if (width < 1024) await page.getByRole('link', { name: 'Back to Settings' }).click();
     await page.getByRole('link', { name: 'Maintenance', exact: true }).click();
     const update = page.getByRole('button', { name: 'Check for updates', exact: true });
     await expect(update).toBeEnabled();
@@ -1430,7 +1431,7 @@ test('discovery stays visible without mining until Mine is explicitly selected',
 test('game priorities show icons instead of editable numbers', async ({ page, request }) => {
   await page.goto('/?edit=priorities');
   await page.getByRole('combobox', { name: 'Search games...' }).fill('The Elder Scrolls Online');
-  await page.getByRole('button', { name: 'Add Game', exact: true }).click();
+  await page.getByRole('option', { name: 'The Elder Scrolls Online', exact: true }).click();
   await expect
     .poll(async () => (await (await request.get('/api/settings')).json()).games_to_watch)
     .toContain('The Elder Scrolls Online');
@@ -1470,11 +1471,12 @@ test('Twitch logout leaves the dashboard and retained profile available for sign
 test('manual game confirmation supports Escape and safe literal names', async ({ page }) => {
   await page.goto('/?edit=priorities');
   await page.getByRole('combobox', { name: 'Search games...' }).fill('<script>new game</script>');
-  await page.getByRole('button', { name: 'Add Game', exact: true }).click();
+  await page.getByRole('button', { name: /^Add ".*" manually$/ }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).not.toBeVisible();
-  await page.getByRole('button', { name: 'Add Game', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Search games...' }).click();
+  await page.getByRole('button', { name: /^Add ".*" manually$/ }).click();
   await page.getByRole('button', { name: 'Confirm', exact: true }).click();
   await expect(page.getByText('<script>new game</script>', { exact: true })).toBeVisible();
 });
@@ -1713,7 +1715,7 @@ test('pages and confirmation dialogs meet automated accessibility checks', async
   }
   await page.goto('/?edit=priorities');
   await page.getByRole('combobox', { name: 'Search games...' }).fill('Custom game');
-  await page.getByRole('button', { name: 'Add Game', exact: true }).click();
+  await page.getByRole('button', { name: /^Add ".*" manually$/ }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 });
@@ -1804,7 +1806,7 @@ test('manual game confirmation appends to the latest settings from another devic
 }) => {
   await page.goto('/?edit=priorities');
   await page.getByRole('combobox', { name: 'Search games...' }).fill('Manual name');
-  await page.getByRole('button', { name: 'Add Game', exact: true }).click();
+  await page.getByRole('button', { name: /^Add ".*" manually$/ }).click();
   const settings = await (await request.get('/api/settings')).json();
   await request.post('/api/settings', {
     headers,
@@ -2418,7 +2420,7 @@ for (const width of [1280, 390, 320]) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-    await page.goto('/settings');
+    await page.goto('/settings#account');
     await page.getByRole('button', { name: 'Add account', exact: true }).click();
     const copy = page.getByRole('button', { name: 'Copy code', exact: true });
     await expect(copy).toBeVisible();
@@ -2479,7 +2481,7 @@ test('icon actions and authorization row use compact accessible controls', async
   await expect
     .poll(() => filters.evaluate((node) => getComputedStyle(node).backgroundColor))
     .toBe('rgb(51, 51, 51)');
-  await page.goto('/settings');
+  await page.goto('/settings#account');
   await expect(page.locator('#settings-account summary')).toHaveCount(0);
   await expect(page.locator('#settings-account .account-identity')).toBeVisible();
   await expect(page.locator('#settings-account')).not.toContainText('Dashboard connected');

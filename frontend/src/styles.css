@@ -91,6 +91,11 @@
     min-height: 0;
   }
 }
+.settings-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+}
 .settings-tab {
   display: inline-flex;
   align-items: center;
@@ -561,6 +566,27 @@ dialog .help-popover {
   }
   .settings-tab {
     min-height: 44px;
+  }
+  .settings-navigation .settings-tab {
+    display: flex;
+    min-height: 56px;
+    padding: 12px 8px;
+    border-radius: 0;
+    gap: 12px;
+    color: var(--color-text);
+    font-size: 14px;
+  }
+  .settings-navigation .settings-tab + .settings-tab {
+    border-top: 1px solid var(--color-divider);
+  }
+  .settings-navigation .settings-tab > svg {
+    color: var(--color-muted);
+  }
+  .settings-navigation .settings-tab:hover {
+    background: var(--color-field);
+  }
+  .settings-navigation {
+    display: block;
   }
   .activity-row {
     gap: 10px;

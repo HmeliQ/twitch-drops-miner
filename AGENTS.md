@@ -650,12 +650,21 @@ embed it and run without a build tool/runtime companion. Production builds never
   retaining order and manual names. Match saved artwork with the shared Unicode game keys.
   Search results and selected games show covers without requiring an active campaign; late
   responses cannot replace newer queries or write metadata after logout/unmount.
-  `/settings#mining` redirects there. Settings has account, dashboard access, connection and
-  maintenance sections without trailing separator lines.
-  Settings sections start at the same offset below their tabs, without repeated section headings.
-  Keep the page title and tab labels, plus the account status/logout row. Hide inactive form
-  wrappers and retain drafts when switching tabs. Tab hashes support back/forward without
-  anchor-scrolling the title or navigation out of view.
+  `/settings#mining` redirects there without losing the selected account. Settings includes a
+  Mining preferences shortcut; its back button returns to Settings and restores focus.
+  Desktop keeps section tabs. Below 1024px, Settings shows a full-width icon/chevron list;
+  opening a section replaces it with a single heading and the shared icon-only back button.
+  Deep links and resizing preserve the section; account switching preserves the current page.
+  Use distinct link and content IDs so hash changes do not scroll the header out of view.
+  Returning to the mobile list restores the previous link's focus. Keep 24px below the mobile
+  header (32px below desktop tabs), 16px between form fields/actions and 4px between related
+  checkboxes, with existing touch targets. Preserve current account controls and shared
+  connection drafts; Telegram retains its explicit clear-on-leaving-Notifications policy.
+  Dashboard access keeps protection status visible and puts its explanation in the shared
+  info popover. Hide inactive form wrappers without adding trailing separators.
+  Game search offers Add "name" manually inside empty/failed search results, after loading,
+  instead of a separate plus button. Keep exact-name/Enter resolution and confirmation before
+  saving unknown names; channel search retains its own explicit submit control.
 - Pause is a saved `mining_paused` setting, default false. It gates automatic and manual
   watch events and progress polling, cancels an in-flight watch and fences late results.
   Inventory refreshes and enabled automatic claims continue. Preserve selected games and the current
