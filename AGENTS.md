@@ -521,8 +521,10 @@ embed it and run without a build tool/runtime companion. Production builds never
   sockets, retaining navigation and drafts and fencing stale replies. Respect all four safe-area
   insets, including dialogs, popovers and the bottom navigation. The compact header stays
   at the top viewport edge and paints its top safe-area inset with the same opaque background;
-  theme-color hints match it. Keep its controls below the inset, campaign details above the
-  header, bottom navigation reachable, and focused page content clear of both. Below 1024px,
+  theme-color hints match it. Retain explicit sticky positioning for WebKit's edge-color
+  sampling even though only the main content scrolls. Keep its controls below the inset,
+  campaign details above the header, bottom navigation reachable, and focused page content
+  clear of both. Below 1024px,
   the shell fills the dynamic viewport and only its main content scrolls between the header
   and bottom navigation; never draw a root scrollbar over those controls. Lock root overscroll
   while the shell is mounted, leaving the login page and desktop document scrolling intact.

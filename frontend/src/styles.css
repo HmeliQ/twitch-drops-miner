@@ -508,7 +508,8 @@ dialog .help-popover {
     padding-bottom: calc(65px + var(--safe-bottom));
   }
   .app-sidebar {
-    position: relative;
+    /* WebKit samples fixed/sticky backgrounds at the status-bar edge. */
+    position: sticky;
     top: 0;
     flex-shrink: 0;
     z-index: 20;

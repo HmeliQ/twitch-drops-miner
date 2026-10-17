@@ -38,6 +38,7 @@ test('the mobile header fills the top safe area and stays reachable while scroll
       page.getByRole('button', { name: 'Campaign details', exact: true }).first(),
     ).toBeVisible();
     await expect(header).toHaveCSS('background-color', 'rgb(28, 28, 30)');
+    await expect(header).toHaveCSS('position', 'sticky');
     await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#1c1c1e');
     expect((await header.boundingBox())!.y).toBe(0);
     expect((await brand.boundingBox())!.y).toBe(safeTop);
