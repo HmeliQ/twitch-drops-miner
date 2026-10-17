@@ -335,15 +335,24 @@ export function AccountsProvider({ children }: { children: ReactNode }) {
           };
       const params = new URLSearchParams(destination.search);
       params.set('account', id);
+      const state = {
+        ...(typeof destination.state === 'object' ? destination.state : {}),
+        preferencesFromSettings: latestLocation.current.state?.preferencesFromSettings === true,
+      };
       restore.current = true;
-      latestLocation.current = { ...latestLocation.current, ...destination, search: `?${params}` };
+      latestLocation.current = {
+        ...latestLocation.current,
+        ...destination,
+        state,
+        search: `?${params}`,
+      };
       selection.current = id;
       setSelected(id);
       rememberSelection(id);
       setError('');
       navigate(
         { pathname: destination.pathname, search: params.toString(), hash: destination.hash },
-        { state: destination.state },
+        { state },
       );
     },
     [navigate],

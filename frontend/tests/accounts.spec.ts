@@ -330,6 +330,7 @@ for (const width of [1440, 320]) {
     await switchTo(page, 'Twitch 123456');
     await expect(page).toHaveURL(/\/settings\?account=primary#connection$/);
     await expect(proxy).toHaveValue('http://127.0.0.1:8888');
+    await proxy.fill('');
     if (width < 1024) await page.getByRole('link', { name: 'Back to Settings' }).click();
     const mining = menu.getByRole('link', { name: 'Mining preferences', exact: true });
     await mining.click();
@@ -342,6 +343,14 @@ for (const width of [1440, 320]) {
     await page.goto(`/settings?account=${second}#mining`);
     await expect(page).toHaveURL(new RegExp(`/\\?edit=priorities&account=${second}$`));
     await expect(page.getByRole('link', { name: 'Back to Settings' })).toBeVisible();
+    await page
+      .getByRole('navigation', { name: 'Main navigation' })
+      .getByRole('link', { name: 'Mining', exact: true })
+      .click();
+    await page.getByRole('link', { name: 'Edit', exact: true }).click();
+    await switchTo(page, 'Twitch 123456');
+    await expect(page.getByRole('link', { name: 'Back to Mining', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Back to Settings', exact: true })).toHaveCount(0);
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   });
 }

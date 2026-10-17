@@ -174,7 +174,12 @@ export default function MiningPreferences() {
                     maxLength={100}
                     disabled={!connected}
                     loading={directory.loading}
-                    ready={!!gameError || available.length > 0 || directory.complete}
+                    ready={
+                      !data?.login.user_id ||
+                      !!gameError ||
+                      available.length > 0 ||
+                      directory.complete
+                    }
                     options={available.map((game) => ({ ...game, id: game.name }))}
                     onSelect={(game) => addGame(game.name, game.metadata)}
                     onResolve={resolveGame}

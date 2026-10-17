@@ -202,7 +202,7 @@ test.describe('touch game selection', () => {
     page,
     request,
   }) => {
-    await page.route('**/api/games', (route) => route.fulfill({ json: [] }));
+    await page.route('**/api/accounts/primary/games', (route) => route.fulfill({ json: [] }));
     await page.goto('/?edit=priorities');
     const search = page.getByRole('combobox', { name: 'Search games' });
     await expect(page.getByRole('button', { name: 'Add Game', exact: true })).toHaveCount(0);
@@ -229,6 +229,30 @@ test.describe('touch game selection', () => {
     await expect(page.locator('[data-game="My missing game"]')).toBeVisible();
     await expect(search).toHaveValue('');
     await expect(page.getByRole('listbox')).toBeHidden();
+  });
+
+  test('signed-out accounts can still add a manual game by touch', async ({ page, request }) => {
+    await request.post('/__test/event', {
+      headers,
+      data: {
+        event: 'initial_state',
+        data: { ...fixture, login: { status: 'Logged out', user_id: null } },
+      },
+    });
+    let queries = 0;
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.endsWith('/games')) queries++;
+    });
+    await page.goto('/?edit=priorities');
+    await page.getByRole('combobox', { name: 'Search games' }).fill('My offline game');
+    await page.getByRole('button', { name: 'Add "My offline game" manually', exact: true }).tap();
+    const dialog = page.getByRole('dialog', { name: 'Add Game', exact: true });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Confirm', exact: true }).tap();
+    await expect
+      .poll(async () => (await (await request.get('/api/settings')).json()).games_to_watch)
+      .toContain('My offline game');
+    expect(queries).toBe(0);
   });
 });
 
