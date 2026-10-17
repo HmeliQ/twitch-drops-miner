@@ -1,5 +1,13 @@
 # Changelog
 
+## [v2.4.0-rc.3](https://github.com/ohne-b/twitch-drops-miner/releases/tag/v2.4.0-rc.3) — 2026-10-17
+
+- make the web dashboard installable as a PWA, with app icons, safe-area support and reconnection when returning to the app ([#133](https://github.com/ohne-b/twitch-drops-miner/pull/133))
+- add an optional Nginx HTTPS setup and move installation guides to the GitHub wiki ([#133](https://github.com/ohne-b/twitch-drops-miner/pull/133))
+- give mobile Settings a section list and back navigation, with cleaner spacing and compact help buttons ([#134](https://github.com/ohne-b/twitch-drops-miner/pull/134))
+- keep mobile scrolling between the header and bottom navigation, with campaign lists scrolling inside their borders ([#134](https://github.com/ohne-b/twitch-drops-miner/pull/134))
+- improve mobile account-button spacing, safe-area backgrounds and game-list dragging ([#134](https://github.com/ohne-b/twitch-drops-miner/pull/134))
+
 ## [v2.4.0-rc.2](https://github.com/ohne-b/twitch-drops-miner/releases/tag/v2.4.0-rc.2) — 2026-10-16
 
 - show fractional confirmed-progress percentages in Now mining, browser and desktop window titles, and the tray status ([#129](https://github.com/ohne-b/twitch-drops-miner/pull/129))
