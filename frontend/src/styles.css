@@ -518,6 +518,9 @@ dialog .help-popover {
   .brand-row {
     min-height: 60px;
   }
+  .account-trigger {
+    padding-inline-end: 6px;
+  }
   .brand-logo {
     height: 32px;
     width: 25px;
