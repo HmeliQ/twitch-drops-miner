@@ -7,6 +7,68 @@ test.beforeEach(async ({ request }) => {
   expect((await request.post('/__test/reset', { headers, data: {} })).ok()).toBe(true);
 });
 
+test('the mobile header fills the top safe area and stays reachable while scrolling', async ({
+  page,
+  request,
+}) => {
+  await request.post('/__test/event', {
+    headers,
+    data: {
+      event: 'inventory_batch_update',
+      data: {
+        campaigns: Array.from({ length: 8 }, (_, index) => ({
+          ...fixture.campaigns[0],
+          id: `header-scroll-${index}`,
+        })),
+      },
+    },
+  });
+  await page.setViewportSize({ width: 390, height: 600 });
+  for (const safeTop of [0, 47]) {
+    await page.goto('/campaigns?view=grid');
+    await page.evaluate((top) => {
+      document.documentElement.style.setProperty('--safe-top', `${top}px`);
+    }, safeTop);
+    const header = page.locator('.app-sidebar');
+    const brand = page.locator('.brand-row');
+    await expect(brand).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Campaign details', exact: true }).first(),
+    ).toBeVisible();
+    await expect(header).toHaveCSS('background-color', 'rgb(28, 28, 30)');
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#1c1c1e');
+    expect((await header.boundingBox())!.y).toBe(0);
+    expect((await brand.boundingBox())!.y).toBe(safeTop);
+    const height = (await brand.boundingBox())!.height;
+    await page.evaluate(() => window.scrollTo(0, 200));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
+    expect((await header.boundingBox())!.y).toBe(0);
+    expect((await brand.boundingBox())!.height).toBe(height);
+    expect(await header.evaluate((node) => node.contains(document.elementFromPoint(195, 4)))).toBe(
+      true,
+    );
+    const firstCampaign = page
+      .getByRole('button', { name: 'Campaign details', exact: true })
+      .first();
+    await firstCampaign.evaluate((node) => node.scrollIntoView({ block: 'start' }));
+    expect((await firstCampaign.boundingBox())!.y).toBeGreaterThanOrEqual(
+      (await header.boundingBox())!.height,
+    );
+    await brand.getByRole('link', { name: 'Manage accounts', exact: true }).click();
+    await expect(page).toHaveURL(/\/settings#account$/);
+    await page
+      .getByRole('navigation')
+      .getByRole('link', { name: 'Campaigns', exact: true })
+      .click();
+    await page.getByRole('button', { name: 'Campaign details', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Close details', exact: true }).click();
+    await page.getByRole('button', { name: 'Campaign details', exact: true }).first().click();
+    await page.getByRole('navigation').getByRole('link', { name: 'Mining', exact: true }).click();
+    await expect(page.locator('.campaign-detail')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Mining', exact: true })).toBeVisible();
+  }
+});
+
 test('app metadata is available with optional login and on the locked dashboard', async ({
   page,
   request,
@@ -34,6 +96,7 @@ test('app metadata is available with optional login and on the locked dashboard'
     start_url: '/',
     name: 'Drops Miner',
     display: 'standalone',
+    theme_color: '#1c1c1e',
   });
   const icons = [
     ...manifest.icons.map((icon: { src: string }) => icon.src),

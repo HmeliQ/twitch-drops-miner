@@ -519,7 +519,10 @@ embed it and run without a build tool/runtime companion. Production builds never
   optional and off by default, including over HTTPS. Desktop continues to use native IPC.
   On browser foreground/BFCache restoration, refresh both account overview and selected-account
   sockets, retaining navigation and drafts and fencing stale replies. Respect all four safe-area
-  insets, including dialogs, popovers and the bottom navigation.
+  insets, including dialogs, popovers and the bottom navigation. The compact header sticks
+  to the top viewport edge and paints its top safe-area inset with the same opaque background;
+  theme-color hints match it. Keep its controls below the inset, campaign details above the
+  header, bottom navigation reachable, and focused page content clear of the sticky header.
 - HTTPS is optional and supplied by a host reverse proxy. `nginx.conf.example` forwards both
   Socket.IO transports to the loopback server. PUBLIC_BASE_URL must match the browser's root
   origin. The outgoing proxy setting is separate. Wiki instructions cover certificate bootstrap

@@ -485,16 +485,23 @@ dialog .help-popover {
   }
 }
 @media (max-width: 1023px) {
+  html {
+    scroll-padding-top: calc(61px + var(--safe-top));
+  }
   .app-shell:has(.campaign-detail) .brand-row {
     visibility: hidden;
   }
   .app-shell {
     display: block;
+    padding-top: 0;
     padding-bottom: 0;
   }
   .app-sidebar {
-    position: static;
+    position: sticky;
+    top: 0;
+    z-index: 20;
     height: auto;
+    padding-top: var(--safe-top);
     border-right: 0;
     border-bottom: 1px solid var(--color-divider);
     overflow: visible;
