@@ -259,7 +259,7 @@
             "settings_conflict": "Settings changed on another device. Review your edits, then retry to apply them.",
             "unsaved": "Unsaved changes",
             "proxy": "Proxy URL",
-            "proxy_help": "Optional HTTP or HTTPS proxy. Leave empty for a direct connection.",
+            "proxy_help": "Optional HTTP or HTTPS proxy for outgoing Twitch and Telegram connections. Leave empty for a direct connection. Dashboard HTTPS is configured separately.",
             "verify_proxy": "Verify proxy",
             "connection_verified": "Connection verified.",
             "save_first": "Wait for your changes to finish saving before continuing.",

@@ -63,10 +63,15 @@ and English messages when UI/console text changes. Render translations as React 
 validated links. Commit dependency lockfiles and avoid unrelated upgrades. Cargo owns
 version/lock consistency; Vite owns asset hashes.
 
-Keep README focused on setup, essential
-usage, updates and troubleshooting. Do not add a paragraph for every feature, list every
-control/status, describe layouts or repeat visible UI labels. Put release changes in CHANGELOG
-and technical contracts in AGENTS; preserve essential setup, recovery and privacy guidance.
+Keep README short, with download and wiki links, project scope and attribution. User guides
+live in the GitHub wiki; contributor policy stays here. Use plain wording and remove filler
+instead of adding a paragraph for every feature. Keep setup, recovery and privacy details
+in the relevant guide. Do not add an Updating and rollback page. Put release changes in
+CHANGELOG and technical contracts in AGENTS.
+
+Review wiki changes with the related PR, recording the wiki commit alongside the code
+revision. Publish and check wiki links before removing their README instructions. Keep wiki
+editing restricted to collaborators. Do not create a second documentation tree in the repo.
 
 ### Desktop development
 
@@ -164,6 +169,13 @@ increase workers against shared fixture state. Playwright's `--fully-parallel --
 distributes individual tests between jobs without running them concurrently inside a job.
 `PLAYWRIGHT_PREBUILT_FIXTURE=1` selects the downloaded CI fixture; local runs continue to
 build and launch it through Cargo. Both browser shards are required for full validation.
+
+The first browser shard also runs `.github/scripts/nginx-smoke.mjs ./dashboard-fixture`
+against the checked-in Nginx example, with temporary ports, certificates and offline data.
+It needs Nginx and OpenSSL; `NGINX_BINARY` and `OPENSSL_BINARY` can override their paths.
+For a local debug fixture, pass `target/debug/dashboard-fixture` (with `.exe` on Windows).
+It checks HTTPS, both Socket.IO transports and password/origin guards without contacting
+Twitch or a certificate authority.
 
 CI caches Rust dependencies and their compiled artifacts by toolchain and Cargo inputs;
 workspace binaries are rebuilt. Browser checks install only Chromium's headless shell.

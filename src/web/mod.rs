@@ -215,6 +215,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/settings", get(index))
         .route("/login", get(login_page))
         .route("/assets/{*path}", get(asset))
+        .route("/manifest.webmanifest", get(manifest))
         .route("/api/auth/status", get(auth_status))
         .route("/api/auth/login", post(auth_login))
         .route("/api/auth/logout", post(auth_logout))
@@ -232,6 +233,9 @@ pub fn router(app: Arc<App>) -> Router {
     #[cfg(feature = "dashboard-fixture")]
     if app.fixture {
         routes = super::fixture::routes(routes);
+    }
+    for path in APP_ICONS {
+        routes = routes.route(path, get(app_icon));
     }
     routes = routes
         .layer(layer)
@@ -269,7 +273,10 @@ async fn guard(State(app): State<Arc<App>>, mut request: Request, next: Next) ->
     }
     let asset =
         path.starts_with("/assets/") && matches!(*request.method(), Method::GET | Method::HEAD);
+    let app_metadata = matches!(*request.method(), Method::GET | Method::HEAD)
+        && (path == "/manifest.webmanifest" || APP_ICONS.contains(&path.as_str()));
     let public = asset
+        || app_metadata
         || matches!(
             path.as_str(),
             "/login" | "/healthz" | "/api/auth/status" | "/api/auth/login"
@@ -381,6 +388,26 @@ async fn login_page(State(app): State<Arc<App>>, headers: HeaderMap) -> Response
 async fn asset(Path(path): Path<String>) -> Response {
     serve_asset(&format!("assets/{path}"), true)
 }
+const APP_ICONS: [&str; 4] = [
+    "/pwa/icon-192.png",
+    "/pwa/icon-512.png",
+    "/pwa/maskable-512.png",
+    "/pwa/apple-touch-icon.png",
+];
+
+async fn manifest() -> Response {
+    let mut response = serve_asset("manifest.webmanifest", false);
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        "application/manifest+json".parse().unwrap(),
+    );
+    response
+}
+
+async fn app_icon(request: Request) -> Response {
+    serve_asset(request.uri().path().trim_start_matches('/'), false)
+}
+
 fn serve_asset(path: &str, immutable: bool) -> Response {
     if path
         .split('/')

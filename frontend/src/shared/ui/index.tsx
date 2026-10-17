@@ -22,6 +22,7 @@ import {
 } from '@mdi/js';
 import { Icon } from '@mdi/react';
 import { ApiError, safeUrl } from '../lib/api';
+import { viewportBounds } from './viewport';
 import { useT } from '../lib/i18n';
 export function IconButton({
   path,
@@ -358,6 +359,27 @@ export function Dialog({
     const dialog = ref.current;
     if (open && !dialog?.open) dialog?.showModal();
     else if (!open && dialog?.open) dialog.close();
+    if (!open || !dialog) return;
+    const position = () => {
+      const { left, top, right, bottom } = viewportBounds();
+      Object.assign(dialog.style, {
+        left: `${left + 8}px`,
+        top: `${top + 8}px`,
+        right: `${innerWidth - right + 8}px`,
+        bottom: `${innerHeight - bottom + 8}px`,
+        width: `${Math.max(0, right - left - 16)}px`,
+        maxHeight: `${Math.max(0, bottom - top - 16)}px`,
+      });
+    };
+    position();
+    window.addEventListener('resize', position);
+    window.visualViewport?.addEventListener('resize', position);
+    window.visualViewport?.addEventListener('scroll', position);
+    return () => {
+      window.removeEventListener('resize', position);
+      window.visualViewport?.removeEventListener('resize', position);
+      window.visualViewport?.removeEventListener('scroll', position);
+    };
   }, [open]);
   return (
     <dialog
@@ -367,7 +389,7 @@ export function Dialog({
         event.preventDefault();
         onClose();
       }}
-      className="m-auto w-[calc(100%_-_32px)] max-w-md rounded-md border border-divider bg-raised p-6 text-text shadow-xl backdrop:bg-black/65"
+      className="app-dialog m-auto max-w-md rounded-md border border-divider bg-raised p-6 text-text shadow-xl backdrop:bg-black/65"
     >
       <div className="mb-4 flex items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-1">

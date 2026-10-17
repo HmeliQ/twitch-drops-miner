@@ -606,6 +606,86 @@ async fn public_assets_and_spa_allowlist_preserve_private_api_boundaries() {
 }
 
 #[tokio::test]
+async fn app_manifest_and_icons_are_public_revalidated_and_do_not_open_private_routes() {
+    let test = TestApp::new("https://drops.example.com");
+    let token = test.enable().await;
+    let (status, headers, body) = test
+        .call(Method::GET, "/manifest.webmanifest", Value::Null, "", &[])
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CONTENT_TYPE], "application/manifest+json");
+    assert_eq!(headers[header::CACHE_CONTROL], "no-cache");
+    assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+    let manifest: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(manifest["id"], "/");
+    assert_eq!(manifest["start_url"], "/");
+    assert_eq!(manifest["scope"], "/");
+    assert_eq!(manifest["name"], "Drops Miner");
+    assert_eq!(manifest["display"], "standalone");
+    for (path, size) in [
+        ("/pwa/icon-192.png", 192),
+        ("/pwa/icon-512.png", 512),
+        ("/pwa/maskable-512.png", 512),
+        ("/pwa/apple-touch-icon.png", 180),
+    ] {
+        let (status, headers, body) = test.call(Method::GET, path, Value::Null, "", &[]).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert_eq!(headers[header::CONTENT_TYPE], "image/png");
+        assert_eq!(headers[header::CACHE_CONTROL], "no-cache");
+        assert_eq!(&body[..8], b"\x89PNG\r\n\x1a\n");
+        assert_eq!(u32::from_be_bytes(body[16..20].try_into().unwrap()), size);
+        assert_eq!(u32::from_be_bytes(body[20..24].try_into().unwrap()), size);
+        assert_eq!(
+            test.call(Method::HEAD, path, Value::Null, "", &[]).await.0,
+            StatusCode::OK
+        );
+    }
+    for icon in manifest["icons"].as_array().unwrap() {
+        assert!(super::APP_ICONS.contains(&icon["src"].as_str().unwrap()));
+    }
+    for path in [
+        "/api/accounts",
+        "/api/settings",
+        "/socket.io/?EIO=4&transport=polling",
+    ] {
+        assert_eq!(
+            test.call(Method::GET, path, Value::Null, "", &[]).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    for path in [
+        "/pwa/missing.png",
+        "/pwa/index.html",
+        "/pwa/../index.html",
+        "/pwa/%2e%2e/index.html",
+    ] {
+        assert_ne!(
+            test.call(Method::GET, path, Value::Null, &token, &[])
+                .await
+                .0,
+            StatusCode::OK,
+            "{path}"
+        );
+    }
+    assert_eq!(
+        test.call(
+            Method::POST,
+            "/manifest.webmanifest",
+            json!({}),
+            "",
+            &[("x-tdm-request", "1")]
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (_, _, login) = test.call(Method::GET, "/login", Value::Null, "", &[]).await;
+    let login = String::from_utf8(login).unwrap();
+    assert!(login.contains("/manifest.webmanifest"));
+    assert!(login.contains("/pwa/apple-touch-icon.png"));
+}
+
+#[tokio::test]
 async fn telegram_configuration_is_protected_and_tokens_are_write_only() {
     let test = TestApp::new("");
     let token = test.enable().await;

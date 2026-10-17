@@ -7,6 +7,8 @@ use twitch_drops_miner::{fixture, web};
 struct Args {
     #[arg(long, default_value = "127.0.0.1:8765")]
     bind: SocketAddr,
+    #[arg(long, default_value = "")]
+    public_base_url: String,
 }
 
 #[tokio::main]
@@ -17,7 +19,7 @@ async fn main() -> anyhow::Result<()> {
         "browser fixture must bind to loopback"
     );
     let directory = tempfile::tempdir()?;
-    let (app, worker) = fixture::create(directory.path().to_owned()).await?;
+    let (app, worker) = fixture::create(directory.path().to_owned(), &args.public_base_url).await?;
     let listener = tokio::net::TcpListener::bind(args.bind).await?;
     let shutdown = app.shutdown.clone();
     axum::serve(

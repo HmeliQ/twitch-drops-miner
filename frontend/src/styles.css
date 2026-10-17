@@ -15,16 +15,23 @@
   --color-accent: #b4a5ed;
 }
 
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
 .app-shell {
   display: grid;
   grid-template-columns: 188px minmax(0, 1fr);
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
 }
 .app-sidebar {
   position: sticky;
-  top: 0;
+  top: var(--safe-top);
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
   overflow-y: auto;
   border-right: 1px solid var(--color-divider);
   background: #1c1c1e;
@@ -73,14 +80,14 @@
 .mining-frame {
   display: flex;
   flex-direction: column;
-  height: calc(100dvh - 56px);
+  height: calc(100dvh - 56px - var(--safe-top) - var(--safe-bottom));
   min-height: 620px;
 }
 @media (min-width: 1024px) {
   .preferences-frame {
     display: flex;
     flex-direction: column;
-    height: calc(100dvh - 56px);
+    height: calc(100dvh - 56px - var(--safe-top) - var(--safe-bottom));
     min-height: 0;
   }
 }
@@ -113,9 +120,9 @@
 }
 .help-popover {
   position: fixed;
-  inset: 0;
-  width: min(320px, calc(100vw - 32px));
-  max-height: calc(100dvh - 32px);
+  inset: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+  width: min(320px, calc(100vw - 32px - var(--safe-left) - var(--safe-right)));
+  max-height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom));
   margin: auto;
   padding: 16px;
   overflow-y: auto;
@@ -160,6 +167,16 @@
 }
 dialog .help-popover {
   height: max-content;
+}
+.app-dialog {
+  inset: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+  width: calc(100% - 32px - var(--safe-left) - var(--safe-right));
+  max-height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom));
+  overflow-y: auto;
+}
+.login-page {
+  padding: max(24px, var(--safe-top)) max(24px, var(--safe-right)) max(24px, var(--safe-bottom))
+    max(24px, var(--safe-left));
 }
 .campaign-workspace {
   display: grid;
@@ -366,7 +383,7 @@ dialog .help-popover {
   .campaigns-frame {
     display: flex;
     flex-direction: column;
-    height: calc(100dvh - 40px);
+    height: calc(100dvh - 40px - var(--safe-top) - var(--safe-bottom));
     min-height: 0;
   }
   .campaigns-frame > :not(.campaign-workspace) {
@@ -404,7 +421,7 @@ dialog .help-popover {
 .activity-frame {
   display: flex;
   flex-direction: column;
-  height: calc(100dvh - 56px);
+  height: calc(100dvh - 56px - var(--safe-top) - var(--safe-bottom));
   overflow-y: auto;
 }
 .activity-workspace {
@@ -461,7 +478,7 @@ dialog .help-popover {
   .campaign-detail {
     position: fixed;
     z-index: 30;
-    inset: 0 0 0 188px;
+    inset: var(--safe-top) var(--safe-right) var(--safe-bottom) calc(188px + var(--safe-left));
     max-height: none;
     border-radius: 0;
     background: var(--color-canvas);
@@ -473,6 +490,7 @@ dialog .help-popover {
   }
   .app-shell {
     display: block;
+    padding-bottom: 0;
   }
   .app-sidebar {
     position: static;
@@ -500,14 +518,14 @@ dialog .help-popover {
     position: fixed;
     z-index: 40;
     bottom: 0;
-    left: 0;
-    right: 0;
+    left: var(--safe-left);
+    right: var(--safe-right);
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 4px;
     border-top: 1px solid var(--color-divider);
     background: #202020;
-    padding: 4px 8px calc(4px + env(safe-area-inset-bottom));
+    padding: 4px 8px calc(4px + var(--safe-bottom));
   }
   .nav-item {
     flex-direction: column;
@@ -522,13 +540,13 @@ dialog .help-popover {
     height: 21px;
   }
   .workspace {
-    padding: 20px 16px calc(92px + env(safe-area-inset-bottom));
+    padding: 20px 16px calc(92px + var(--safe-bottom));
   }
   .campaign-detail {
-    inset: 0 0 calc(65px + env(safe-area-inset-bottom));
+    inset: var(--safe-top) var(--safe-right) calc(65px + var(--safe-bottom)) var(--safe-left);
   }
   .activity-frame {
-    height: calc(100dvh - 173px - env(safe-area-inset-bottom));
+    height: calc(100dvh - 173px - var(--safe-top) - var(--safe-bottom));
   }
   .settings-tab {
     min-height: 44px;

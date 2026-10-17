@@ -2,6 +2,7 @@ import { io, type Socket } from 'socket.io-client';
 import type { AuthStatus, ServerEvents } from '../shared/lib/types';
 import { request } from '../shared/lib/api';
 import type { StateAction } from './reducer';
+import { onBrowserResume } from './browserResume';
 
 export interface Subscription {
   resync(): void;
@@ -52,7 +53,7 @@ export function connectBrowser(
   socket.on('initial_state', mismatch);
   socket.on('disconnect', (reason) => {
     receive({ type: 'disconnect' });
-    checkAuth(reason === 'io server disconnect');
+    if (reason !== 'io client disconnect') checkAuth(reason === 'io server disconnect');
   });
   socket.on('connect_error', () => {
     receive({ type: 'disconnect' });
@@ -72,6 +73,11 @@ export function connectBrowser(
   };
   window.addEventListener('offline', offline);
   window.addEventListener('online', online);
+  const stopResume = onBrowserResume(() => {
+    if (disposed || incompatible || !navigator.onLine) return;
+    receive({ type: 'disconnect' });
+    socket.disconnect().connect();
+  });
   socket.connect();
   return {
     resync: () => socket.emit('state_resync'),
@@ -79,6 +85,7 @@ export function connectBrowser(
       disposed = true;
       clearTimeout(reconnectTimer);
       controller.abort();
+      stopResume();
       window.removeEventListener('offline', offline);
       window.removeEventListener('online', online);
       socket.removeAllListeners();
