@@ -1,4 +1,5 @@
-import { Link, NavLink } from './accountNavigation';
+import { pageScrollElement } from '../shared/ui/pageScroll';
+import { Link, NavLink, useAccountPath } from './accountNavigation';
 import { DesktopUpdateLink, DesktopUpdateProvider } from '../features/settings/DesktopUpdates';
 import { isDesktop } from '../shared/lib/platform';
 import { DesktopStartupError, DesktopStatus } from '../features/settings/Desktop';
@@ -56,6 +57,7 @@ function Shell({ auth, onLogout }: { auth: AuthStatus; onLogout: () => Promise<v
     };
   }, [title]);
   const location = useLocation();
+  const preferencesPath = useAccountPath('/?edit=priorities');
   const navigationType = useNavigationType();
   const previousLocation = useRef(location);
   const [logoutError, setLogoutError] = useState(false);
@@ -68,6 +70,18 @@ function Shell({ auth, onLogout }: { auth: AuthStatus; onLogout: () => Promise<v
   useEffect(() => {
     const previous = previousLocation.current;
     previousLocation.current = location;
+    if (
+      navigationType === 'POP' &&
+      previous.state?.preferencesFromSettings === true &&
+      location.pathname === '/settings'
+    ) {
+      const frame = requestAnimationFrame(() => {
+        const trigger = document.getElementById('settings-link-mining');
+        if (trigger?.getClientRects().length) trigger.focus({ preventScroll: true });
+        pageScrollElement().scrollTo(0, 0);
+      });
+      return () => cancelAnimationFrame(frame);
+    }
     const origin = previous.state?.campaignReturn;
     if (
       navigationType === 'POP' &&
@@ -78,7 +92,7 @@ function Shell({ auth, onLogout }: { auth: AuthStatus; onLogout: () => Promise<v
           const list = document.getElementById(id);
           if (list?.clientWidth === width) list.scrollTop = top;
         }
-        window.scrollTo(0, origin.width === window.innerWidth ? origin.top : 0);
+        pageScrollElement().scrollTo(0, origin.width === window.innerWidth ? origin.top : 0);
         const trigger = document.getElementById(origin.focus);
         trigger?.focus({ preventScroll: true });
         trigger?.scrollIntoView({ block: 'nearest' });
@@ -87,7 +101,7 @@ function Shell({ auth, onLogout }: { auth: AuthStatus; onLogout: () => Promise<v
     }
     if (previous.pathname === location.pathname) return;
     if (location.search.includes('campaign=')) return;
-    window.scrollTo(0, 0);
+    pageScrollElement().scrollTo(0, 0);
   }, [location, navigationType]);
   return (
     <div className="app-shell min-h-dvh">
@@ -226,7 +240,11 @@ function Shell({ auth, onLogout }: { auth: AuthStatus; onLogout: () => Promise<v
                 path="/settings"
                 element={
                   location.hash === '#mining' ? (
-                    <Navigate to="/?edit=priorities" replace />
+                    <Navigate
+                      to={preferencesPath}
+                      state={{ preferencesFromSettings: true }}
+                      replace
+                    />
                   ) : (
                     <Settings auth={auth} />
                   )

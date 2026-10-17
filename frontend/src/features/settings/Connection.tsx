@@ -109,8 +109,8 @@ export default function Connection() {
             }
           />
         </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('proxy')} help={t('proxy_help')}>
+        <div className="grid gap-4 sm:grid-cols-2 sm:[&>div>div:first-child]:min-h-11 md:[&>div>div:first-child]:min-h-9">
+          <Field label={t('proxy')} detail={t('proxy_help')}>
             <Input
               type="url"
               maxLength={4096}

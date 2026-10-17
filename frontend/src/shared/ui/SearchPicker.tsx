@@ -25,7 +25,7 @@ export default function SearchPicker<T extends SearchOption>({
 }: {
   label: string;
   actionLabel: string;
-  actionIcon: string;
+  actionIcon?: string;
   submit?: boolean;
   busy?: boolean;
   roundImages?: boolean;
@@ -193,18 +193,20 @@ export default function SearchPicker<T extends SearchOption>({
           }}
         />
       </fieldset>
-      <IconButton
-        path={actionIcon}
-        label={actionLabel}
-        type={submit ? 'submit' : 'button'}
-        aria-busy={loading || busy}
-        disabled={disabled || !value.trim() || (!submit && loading)}
-        onClick={() => {
-          setOpen(true);
-          if (!submit) onResolve();
-          input.current?.focus({ preventScroll: true });
-        }}
-      />
+      {actionIcon && (
+        <IconButton
+          path={actionIcon}
+          label={actionLabel}
+          type={submit ? 'submit' : 'button'}
+          aria-busy={loading || busy}
+          disabled={disabled || !value.trim() || (!submit && loading)}
+          onClick={() => {
+            setOpen(true);
+            if (!submit) onResolve();
+            input.current?.focus({ preventScroll: true });
+          }}
+        />
+      )}
       <div
         ref={popup}
         popover={!inline && nativePopover ? 'auto' : undefined}
@@ -247,6 +249,20 @@ export default function SearchPicker<T extends SearchOption>({
             </div>
           ))}
         </div>
+        {!actionIcon && !loading && !options.length && (
+          <button
+            type="button"
+            className="min-h-11 shrink-0 cursor-pointer px-3 py-2 text-left text-[13px] wrap-anywhere hover:bg-hover focus-visible:bg-hover"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              setOpen(false);
+              setActive(null);
+              onResolve();
+            }}
+          >
+            {actionLabel}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -291,6 +291,39 @@ test('switching retains account views and sends a pending preference save to its
   ).toHaveValue('Rust');
 });
 
+test('mobile account switching restores the content and campaign list scroll positions', async ({
+  page,
+  request,
+}) => {
+  await seed(request, 1);
+  await request.post('/__test/event', {
+    headers,
+    data: {
+      event: 'inventory_batch_update',
+      data: {
+        campaigns: Array.from({ length: 25 }, (_, index) => ({
+          ...fixture.campaigns[0],
+          id: `scroll-${index}`,
+        })),
+      },
+    },
+  });
+  await page.setViewportSize({ width: 390, height: 600 });
+  for (const view of ['grid', 'list']) {
+    await page.goto(`/campaigns?account=primary&view=${view}`);
+    await expect(page.locator('.campaign-summary')).toHaveCount(25);
+    const scroller = page.locator(view === 'grid' ? '#main' : '.campaign-results-list');
+    await scroller.evaluate((element) => element.scrollTo(0, 400));
+    await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(400);
+    await switchTo(page, 'Account 2');
+    await expect(page).toHaveURL(new RegExp(`account=${second}`));
+    await switchTo(page, 'Twitch 123456');
+    await expect(page.locator('.campaign-summary')).toHaveCount(25);
+    await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(400);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  }
+});
+
 test('switching accounts keeps the current page and settings or campaign section', async ({
   page,
   request,
@@ -313,6 +346,47 @@ test('switching accounts keeps the current page and settings or campaign section
   expect(url.searchParams.get('tab')).toBe('history');
   expect(url.searchParams.get('account')).toBe('primary');
 });
+
+for (const width of [1440, 320]) {
+  test(`Settings navigation retains the viewed account and preference return path at ${width}px`, async ({
+    page,
+    request,
+  }) => {
+    await seed(request);
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(`/settings?account=${second}`);
+    const menu = page.getByRole('navigation', { name: 'Settings sections' });
+    await menu.getByRole('link', { name: 'Connection', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/settings\\?account=${second}#connection$`));
+    const proxy = page.getByLabel('Proxy URL', { exact: true });
+    await proxy.fill('http://127.0.0.1:8888');
+    await switchTo(page, 'Twitch 123456');
+    await expect(page).toHaveURL(/\/settings\?account=primary#connection$/);
+    await expect(proxy).toHaveValue('http://127.0.0.1:8888');
+    await proxy.fill('');
+    if (width < 1024) await page.getByRole('link', { name: 'Back to Settings' }).click();
+    const mining = menu.getByRole('link', { name: 'Mining preferences', exact: true });
+    await mining.click();
+    await expect(page).toHaveURL(/\/\?edit=priorities&account=primary$/);
+    await switchTo(page, 'Account 2');
+    await expect(page).toHaveURL(new RegExp(`/\\?edit=priorities&account=${second}$`));
+    await page.getByRole('link', { name: 'Back to Settings' }).click();
+    await expect(mining).toBeFocused();
+    expect(new URL(page.url()).searchParams.get('account')).toBe(second);
+    await page.goto(`/settings?account=${second}#mining`);
+    await expect(page).toHaveURL(new RegExp(`/\\?edit=priorities&account=${second}$`));
+    await expect(page.getByRole('link', { name: 'Back to Settings' })).toBeVisible();
+    await page
+      .getByRole('navigation', { name: 'Main navigation' })
+      .getByRole('link', { name: 'Mining', exact: true })
+      .click();
+    await page.getByRole('link', { name: 'Edit', exact: true }).click();
+    await switchTo(page, 'Twitch 123456');
+    await expect(page.getByRole('link', { name: 'Back to Mining', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Back to Settings', exact: true })).toHaveCount(0);
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  });
+}
 
 test('bulk actions keep successful accounts and retry only failures after a revision conflict', async ({
   page,

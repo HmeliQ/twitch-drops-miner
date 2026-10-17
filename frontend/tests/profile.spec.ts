@@ -92,6 +92,9 @@ for (const viewport of [
       await expect(badge.locator('img')).toHaveCSS('height', '18px');
       const name = link.getByText('Northwind', { exact: true });
       await expect(name).toBeVisible();
+      const triggerBox = (await link.boundingBox())!;
+      const nameBox = (await name.boundingBox())!;
+      expect(triggerBox.x + triggerBox.width - nameBox.x - nameBox.width).toBeGreaterThanOrEqual(6);
       expect(await name.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
         true,
       );
