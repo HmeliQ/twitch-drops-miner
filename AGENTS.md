@@ -526,7 +526,8 @@ embed it and run without a build tool/runtime companion. Production builds never
   the shell fills the dynamic viewport and only its main content scrolls between the header
   and bottom navigation; never draw a root scrollbar over those controls. Lock root overscroll
   while the shell is mounted, leaving the login page and desktop document scrolling intact.
-  Use the shared page scroll element for route resets, account switching and detail restoration.
+  Use the shared page scroll element for route resets, account switching, detail restoration
+  and drag autoscroll. Drag edges follow the visible content bounds outside the navigation.
   Available and History list views fit their bordered results to the remaining height, keeping
   controls outside the list. Very short viewports may scroll the content to keep controls reachable.
   Detail overlays lock that content scroller; their own body and bottom navigation stay usable.

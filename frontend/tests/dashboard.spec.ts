@@ -2292,6 +2292,39 @@ test('pointer dragging saves on drop and Escape cancels a second drag', async ({
   ]);
 });
 
+test('mobile game dragging scrolls the visible content and bordered list before reaching navigation', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 390, height: 600 });
+  for (const count of [6, 12]) {
+    const games = Array.from({ length: count }, (_, index) => `Game ${index + 1}`);
+    await request.post('/api/settings', { headers, data: { games_to_watch: games } });
+    await page.goto('/?edit=priorities');
+    const list = page.getByRole('region', { name: 'Game priorities', exact: true });
+    const content = page.locator('#main');
+    const handle = page.getByRole('button', { name: 'Reorder Game 1', exact: true });
+    const from = (await handle.boundingBox())!;
+    const viewport = (await content.boundingBox())!;
+    await page.mouse.move(from.x + 10, from.y + 10);
+    await page.mouse.down();
+    const edge = viewport.y + viewport.height - 20;
+    for (let index = 0; index < 80; index++) await page.mouse.move(from.x + 60 + (index % 2), edge);
+    await expect.poll(() => content.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    if (count === 12)
+      await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    const last = (await page.locator(`[data-game="Game ${count}"]`).boundingBox())!;
+    expect(last.y + last.height).toBeLessThanOrEqual(viewport.y + viewport.height);
+    if ((await list.locator('[data-game]').last().getAttribute('data-game')) !== 'Game 1')
+      await page.mouse.move(last.x + 70, last.y + last.height / 2);
+    await page.mouse.up();
+    await expect
+      .poll(async () => (await (await request.get('/api/settings')).json()).games_to_watch)
+      .toEqual([...games.slice(1), games[0]]);
+  }
+});
+
 test('touch dragging reorders game priorities', async ({ browser, request }) => {
   const context = await browser.newContext({
     hasTouch: true,

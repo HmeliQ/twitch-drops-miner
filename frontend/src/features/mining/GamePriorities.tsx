@@ -4,6 +4,7 @@ import { moveGame } from '../../shared/lib/api';
 import { useT } from '../../shared/lib/i18n';
 import type { Campaign, GameMetadata } from '../../shared/lib/types';
 import { Art, IconButton, Empty } from '../../shared/ui/index';
+import { pageScrollElement } from '../../shared/ui/pageScroll';
 
 export function GamePriorities({
   games,
@@ -62,16 +63,21 @@ export function GamePriorities({
       if (to !== -1 && to !== from) current.games = moveGame(current.games, from, to);
     }
     const container = scrollContainer.current;
+    const page = pageScrollElement();
+    const viewport =
+      page === document.scrollingElement
+        ? { top: 0, bottom: window.innerHeight }
+        : page.getBoundingClientRect();
     const scrolling = container && container.scrollHeight > container.clientHeight;
-    const bounds = scrolling ? container.getBoundingClientRect() : null;
-    const edge = Math.min(70, (bounds?.height ?? window.innerHeight) / 3);
-    const scrollBy =
-      event.clientY < (bounds?.top ?? 0) + edge
-        ? -12
-        : event.clientY > (bounds?.bottom ?? window.innerHeight) - edge
-          ? 12
-          : 0;
-    if (scrollBy) (scrolling ? container : window).scrollBy(0, scrollBy);
+    const bounds = scrolling ? container.getBoundingClientRect() : viewport;
+    const top = Math.max(bounds.top, viewport.top);
+    const bottom = Math.min(bounds.bottom, viewport.bottom);
+    const edge = Math.min(70, (bottom - top) / 3);
+    const scrollBy = event.clientY < top + edge ? -12 : event.clientY > bottom - edge ? 12 : 0;
+    // Reveal a clipped list edge before scrolling the rows inside it.
+    const scrollList =
+      scrolling && (scrollBy < 0 ? bounds.top >= viewport.top : bounds.bottom <= viewport.bottom);
+    if (scrollBy) (scrollList ? container : page).scrollBy(0, scrollBy);
     setPreview({ game: current.game, games: current.games, x: event.clientX, y: event.clientY });
   }
   return (
