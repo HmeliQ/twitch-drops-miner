@@ -1020,6 +1020,14 @@ test('every route loads directly and stays usable on a phone', async ({ page }) 
   const proxy = await page.getByLabel('Proxy URL', { exact: true }).boundingBox();
   const quality = await page.getByLabel('Connection Quality:', { exact: true }).boundingBox();
   expect(proxy!.y).toBeCloseTo(quality!.y, 0);
+  const proxyLabel = (await page.locator('label', { hasText: /^Proxy URL$/ }).boundingBox())!;
+  const qualityLabel = (await page
+    .locator('label', { hasText: /^Connection Quality:$/ })
+    .boundingBox())!;
+  expect(proxyLabel.y + proxyLabel.height / 2).toBeCloseTo(
+    qualityLabel.y + qualityLabel.height / 2,
+    0,
+  );
   await page.screenshot({ path: '../artifacts/settings-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   for (const [route, title] of [

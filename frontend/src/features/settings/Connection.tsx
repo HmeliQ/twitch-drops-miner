@@ -109,7 +109,7 @@ export default function Connection() {
             }
           />
         </Field>
-        <div className="grid items-end gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2 sm:[&>div>div:first-child]:min-h-11 md:[&>div>div:first-child]:min-h-9">
           <Field label={t('proxy')} detail={t('proxy_help')}>
             <Input
               type="url"
