@@ -487,6 +487,7 @@ dialog .help-popover {
 @media (max-width: 1023px) {
   html {
     scroll-padding-top: calc(61px + var(--safe-top));
+    overscroll-behavior-y: none;
   }
   .app-shell:has(.campaign-detail) .brand-row {
     visibility: hidden;

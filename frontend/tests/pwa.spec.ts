@@ -40,6 +40,11 @@ test('the mobile header fills the top safe area and stays reachable while scroll
     expect((await header.boundingBox())!.y).toBe(0);
     expect((await brand.boundingBox())!.y).toBe(safeTop);
     const height = (await brand.boundingBox())!.height;
+    expect(height).toBe(60);
+    expect((await header.boundingBox())!.height).toBe(height + safeTop + 1);
+    await page.mouse.move(195, 200);
+    await page.mouse.wheel(0, -300);
+    expect((await header.boundingBox())!.y).toBe(0);
     await page.evaluate(() => window.scrollTo(0, 200));
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
     expect((await header.boundingBox())!.y).toBe(0);
