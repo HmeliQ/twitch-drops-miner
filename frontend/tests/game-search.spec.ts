@@ -131,7 +131,10 @@ test('dismissed pending searches stay closed when the result arrives', async ({ 
   } finally {
     finish();
   }
-  await expect(page.getByRole('button', { name: 'Add Game', exact: true })).toBeEnabled();
+  await expect(page.locator('#priorities fieldset[aria-busy]')).toHaveAttribute(
+    'aria-busy',
+    'false',
+  );
   await expect(page.getByRole('listbox')).toBeHidden();
   await expect(search).toHaveValue('stardew');
   await search.press('ArrowDown');
@@ -194,6 +197,63 @@ test.describe('touch game selection', () => {
     await expect(page.locator('[data-game="Stardew Valley"]')).toBeVisible();
     await expect(page.getByRole('listbox')).toBeHidden();
   });
+
+  test('an empty search offers a touch-sized manual action with confirmation', async ({
+    page,
+    request,
+  }) => {
+    await page.route('**/api/accounts/primary/games', (route) => route.fulfill({ json: [] }));
+    await page.goto('/?edit=priorities');
+    const search = page.getByRole('combobox', { name: 'Search games' });
+    await expect(page.getByRole('button', { name: 'Add Game', exact: true })).toHaveCount(0);
+    await search.fill('My missing game');
+    const manual = page.getByRole('button', {
+      name: 'Add "My missing game" manually',
+      exact: true,
+    });
+    await expect(manual).toBeVisible();
+    expect((await manual.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await page.screenshot({ path: '../artifacts/game-search-manual-mobile.png' });
+    const before = (await (await request.get('/api/settings')).json()).games_to_watch;
+    await manual.focus();
+    await manual.press('Enter');
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await search.click();
+    await manual.tap();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    expect((await (await request.get('/api/settings')).json()).games_to_watch).toEqual(before);
+    await dialog.getByRole('button', { name: 'Confirm', exact: true }).tap();
+    await expect(page.locator('[data-game="My missing game"]')).toBeVisible();
+    await expect(search).toHaveValue('');
+    await expect(page.getByRole('listbox')).toBeHidden();
+  });
+
+  test('signed-out accounts can still add a manual game by touch', async ({ page, request }) => {
+    await request.post('/__test/event', {
+      headers,
+      data: {
+        event: 'initial_state',
+        data: { ...fixture, login: { status: 'Logged out', user_id: null } },
+      },
+    });
+    let queries = 0;
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.endsWith('/games')) queries++;
+    });
+    await page.goto('/?edit=priorities');
+    await page.getByRole('combobox', { name: 'Search games' }).fill('My offline game');
+    await page.getByRole('button', { name: 'Add "My offline game" manually', exact: true }).tap();
+    const dialog = page.getByRole('dialog', { name: 'Add Game', exact: true });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Confirm', exact: true }).tap();
+    await expect
+      .poll(async () => (await (await request.get('/api/settings')).json()).games_to_watch)
+      .toContain('My offline game');
+    expect(queries).toBe(0);
+  });
 });
 
 test('older webviews can search, dismiss and select without the Popover API', async ({ page }) => {
@@ -229,6 +289,14 @@ test('older webviews can search, dismiss and select without the Popover API', as
   await expect(retry).toBeHidden();
   await expect(search).toBeFocused();
   await expect(search).toHaveValue('fail');
+  await search.click();
+  const manual = page.getByRole('button', { name: 'Add "fail" manually', exact: true });
+  await manual.focus();
+  await manual.press('Enter');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toBeHidden();
+  await expect(page.locator('[data-game="fail"]')).toHaveCount(0);
 });
 test.beforeEach(async ({ request, page }) => {
   expect((await request.post('/__test/reset', { headers, data: {} })).ok()).toBeTruthy();
@@ -327,7 +395,8 @@ test('changed queries ignore stale results and failed searches can retry or add 
   await expect.poll(() => !!finishSlow).toBe(true);
   await expect(page.getByRole('listbox', { name: 'Search games', exact: true })).toHaveCount(0);
   await expect(page.getByText('Searching Twitch…', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Add Game', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: /^Add ".*" manually$/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Add Game', exact: true })).toHaveCount(0);
   await search.fill('stardew');
   await expect(page.getByRole('option', { name: 'Stardew Valley', exact: true })).toBeVisible();
   finishSlow!();
@@ -336,8 +405,7 @@ test('changed queries ignore stale results and failed searches can retry or add 
   await expect(
     page.getByText('Twitch search is unavailable. You can still add a name.'),
   ).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Add Game', exact: true })).toBeEnabled();
-  await page.getByRole('button', { name: 'Add Game', exact: true }).click();
+  await page.getByRole('button', { name: 'Add "fail" manually', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Confirm', exact: true }).click();
   await expect(page.locator('[data-game="fail"]')).toBeVisible();
   await search.fill('fail');

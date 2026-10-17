@@ -1,3 +1,4 @@
+import { pageScrollElement } from '../../shared/ui/pageScroll';
 import { useEffect, useRef } from 'react';
 import { Icon } from '@mdi/react';
 import { mdiClose, mdiOpenInNew, mdiReload } from '@mdi/js';
@@ -58,10 +59,10 @@ export function CampaignDetail({
     }
   };
   useEffect(() => {
-    const top = window.scrollY;
+    const top = pageScrollElement().scrollTop;
     heading.current?.focus({ preventScroll: true });
     return () => {
-      window.scrollTo(0, top);
+      pageScrollElement().scrollTo(0, top);
       document.getElementById(triggerId)?.focus({ preventScroll: true });
     };
   }, [id, triggerId]);

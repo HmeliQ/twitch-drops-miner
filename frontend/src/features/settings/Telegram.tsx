@@ -138,7 +138,7 @@ export default function Telegram({ connected }: { connected: boolean }) {
     });
   }
   return (
-    <section id="settings-notifications" className="max-w-md space-y-4">
+    <section id="settings-notifications" className="grid min-w-0 max-w-md grid-cols-1 gap-4">
       <div className="flex items-center gap-1">
         <h2 className="font-semibold">Telegram</h2>
         <HelpButton
@@ -169,102 +169,110 @@ export default function Telegram({ connected }: { connected: boolean }) {
       )}
       {saved && (
         <form
-          className="space-y-3"
+          className="grid gap-4"
           onSubmit={(event) => {
             event.preventDefault();
             void save();
           }}
         >
           {saved.unreadable && <Notice error>{t('gui.auth.telegram_storage')}</Notice>}
-          <fieldset disabled={!connected || action.busy || saved.unreadable} className="space-y-4">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <Check
-                label={t('telegram_enabled')}
-                checked={enabled}
-                onChange={(value) => {
-                  action.clear();
-                  setEnabled(value);
-                }}
-              />
-              {enabled && (
-                <AnchoredPopover
-                  label={t('telegram_accounts')}
-                  icon={mdiChevronDown}
-                  open={accountsOpen}
-                  maxHeight={320}
-                  onToggle={() => setAccountsOpen(!accountsOpen)}
-                  onClose={closeAccounts}
-                  triggerClass="button min-w-0 text-xs"
-                  triggerContent={
-                    <>
-                      {selectedAccounts === null
-                        ? t('telegram_accounts_all')
-                        : selectedCount
-                          ? t(
-                              selectedCount === 1
-                                ? 'telegram_accounts_one'
-                                : 'telegram_accounts_count',
-                              { count: selectedCount },
-                            )
-                          : t('telegram_accounts_none')}
-                      <Icon path={mdiChevronDown} className="mdi-icon size-4!" />
-                    </>
-                  }
-                >
-                  <div className="shrink-0 border-b border-divider px-3 py-2">
-                    <Check
-                      label={t('telegram_accounts_all')}
-                      checked={selectedAccounts === null}
-                      onChange={(value) => {
-                        action.clear();
-                        setSelectedAccounts(value ? null : []);
-                      }}
-                    />
-                  </div>
-                  <div className="min-h-0 overflow-y-auto overscroll-contain p-3 space-y-2">
-                    {accounts.map((account) => (
+          <fieldset
+            disabled={!connected || action.busy || saved.unreadable}
+            className="grid min-w-0 gap-4"
+          >
+            <div className="grid gap-1">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <Check
+                  label={t('telegram_enabled')}
+                  checked={enabled}
+                  onChange={(value) => {
+                    action.clear();
+                    setEnabled(value);
+                  }}
+                />
+                {enabled && (
+                  <AnchoredPopover
+                    label={t('telegram_accounts')}
+                    icon={mdiChevronDown}
+                    open={accountsOpen}
+                    maxHeight={320}
+                    onToggle={() => setAccountsOpen(!accountsOpen)}
+                    onClose={closeAccounts}
+                    triggerClass="button min-w-0 text-xs"
+                    triggerContent={
+                      <>
+                        {selectedAccounts === null
+                          ? t('telegram_accounts_all')
+                          : selectedCount
+                            ? t(
+                                selectedCount === 1
+                                  ? 'telegram_accounts_one'
+                                  : 'telegram_accounts_count',
+                                { count: selectedCount },
+                              )
+                            : t('telegram_accounts_none')}
+                        <Icon path={mdiChevronDown} className="mdi-icon size-4!" />
+                      </>
+                    }
+                  >
+                    <div className="shrink-0 border-b border-divider px-3 py-2">
                       <Check
-                        key={account.id}
-                        label={accountName(account)}
-                        checked={
-                          selectedAccounts === null || selectedAccounts.includes(account.user_id!)
-                        }
+                        label={t('telegram_accounts_all')}
+                        checked={selectedAccounts === null}
                         onChange={(value) => {
                           action.clear();
-                          const ids = selectedAccounts ?? accounts.map((entry) => entry.user_id!);
-                          setSelectedAccounts(
-                            value
-                              ? [...new Set([...ids, account.user_id!])].sort((a, b) => a - b)
-                              : ids.filter((id) => id !== account.user_id),
-                          );
+                          setSelectedAccounts(value ? null : []);
                         }}
                       />
-                    ))}
-                    {!accounts.length && (
-                      <p className="text-muted text-xs">{t('accounts_empty')}</p>
-                    )}
-                  </div>
-                </AnchoredPopover>
-              )}
-            </div>
-            <Check
-              label={t('telegram_include_image')}
-              checked={includeImage}
-              onChange={(value) => {
-                action.clear();
-                setIncludeImage(value);
-              }}
-            />
-            <div className="flex items-center gap-1">
+                    </div>
+                    <div className="min-h-0 overflow-y-auto overscroll-contain p-3 space-y-2">
+                      {accounts.map((account) => (
+                        <Check
+                          key={account.id}
+                          label={accountName(account)}
+                          checked={
+                            selectedAccounts === null || selectedAccounts.includes(account.user_id!)
+                          }
+                          onChange={(value) => {
+                            action.clear();
+                            const ids = selectedAccounts ?? accounts.map((entry) => entry.user_id!);
+                            setSelectedAccounts(
+                              value
+                                ? [...new Set([...ids, account.user_id!])].sort((a, b) => a - b)
+                                : ids.filter((id) => id !== account.user_id),
+                            );
+                          }}
+                        />
+                      ))}
+                      {!accounts.length && (
+                        <p className="text-muted text-xs">{t('accounts_empty')}</p>
+                      )}
+                    </div>
+                  </AnchoredPopover>
+                )}
+              </div>
               <Check
-                label={t('telegram_remote_control')}
-                checked={remoteControl}
+                label={t('telegram_include_image')}
+                checked={includeImage}
                 onChange={(value) => {
                   action.clear();
-                  setRemoteControl(value);
+                  setIncludeImage(value);
                 }}
               />
-              <HelpButton label={t('telegram_remote_control')} text={t('telegram_control_help')} />
+              <div className="flex items-center gap-1">
+                <Check
+                  label={t('telegram_remote_control')}
+                  checked={remoteControl}
+                  onChange={(value) => {
+                    action.clear();
+                    setRemoteControl(value);
+                  }}
+                />
+                <HelpButton
+                  label={t('telegram_remote_control')}
+                  text={t('telegram_control_help')}
+                />
+              </div>
             </div>
             <Field label={t('telegram_bot_token')}>
               <Input

@@ -1,7 +1,9 @@
+import { pageScrollElement } from '../../shared/ui/pageScroll';
 import { Link } from '../../app/accountNavigation';
+import { useLocation } from 'react-router';
 import { Icon } from '@mdi/react';
 import { useEffect, useRef, useState } from 'react';
-import { mdiArrowLeft, mdiPriorityHigh, mdiReload, mdiPlus } from '@mdi/js';
+import { mdiArrowLeft, mdiPriorityHigh, mdiReload } from '@mdi/js';
 import type { Settings as SettingsData, GameMetadata } from '../../shared/lib/types';
 import { useAccountState } from '../../app/accounts';
 import { useMiner } from '../../app/MinerProvider';
@@ -23,6 +25,7 @@ import {
 export default function MiningPreferences() {
   const { data, connected, autosave, request } = useMiner();
   const t = useT();
+  const fromSettings = useLocation().state?.preferencesFromSettings === true;
   const settings = data!.settings;
   const draft = autosave.draft ?? settings;
   const gameKey = (name: string) => settings.game_keys?.[name] ?? name.toLowerCase();
@@ -31,7 +34,7 @@ export default function MiningPreferences() {
   const heading = useRef<HTMLHeadingElement>(null);
   const gameList = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    window.scrollTo(0, 0);
+    pageScrollElement().scrollTo(0, 0);
     heading.current?.focus({ preventScroll: true });
   }, []);
   const [ignoredText, setIgnoredText] = useAccountState(
@@ -139,10 +142,11 @@ export default function MiningPreferences() {
     <div className="flex flex-col gap-5 lg:min-h-0 lg:flex-1">
       <header className="flex shrink-0 items-center gap-3">
         <Link
-          to="/"
+          to={fromSettings ? '/settings' : '/'}
+          state={fromSettings ? { settingsFocus: 'mining' } : undefined}
           className="icon-button"
-          aria-label={t('back_to_mining')}
-          title={t('back_to_mining')}
+          aria-label={t(fromSettings ? 'back_to_settings' : 'back_to_mining')}
+          title={t(fromSettings ? 'back_to_settings' : 'back_to_mining')}
         >
           <Icon path={mdiArrowLeft} className="mdi-icon" />
         </Link>
@@ -167,12 +171,16 @@ export default function MiningPreferences() {
                 <div className="flex shrink-0 flex-wrap justify-end gap-2">
                   <SearchPicker
                     label={t('gui.settings.search_games')}
-                    actionLabel={t('gui.settings.add_game')}
-                    actionIcon={mdiPlus}
+                    actionLabel={t('game_add_manually', { game: search.trim() })}
                     maxLength={100}
                     disabled={!connected}
                     loading={directory.loading}
-                    ready={!!gameError || available.length > 0 || directory.complete}
+                    ready={
+                      !data?.login.user_id ||
+                      !!gameError ||
+                      available.length > 0 ||
+                      directory.complete
+                    }
                     options={available.map((game) => ({ ...game, id: game.name }))}
                     onSelect={(game) => addGame(game.name, game.metadata)}
                     onResolve={resolveGame}

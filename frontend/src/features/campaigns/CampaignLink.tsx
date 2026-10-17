@@ -1,3 +1,4 @@
+import { pageScrollElement } from '../../shared/ui/pageScroll';
 import { Link, useAccountPath } from '../../app/accountNavigation';
 import { useLocation, useNavigate, type LinkProps } from 'react-router';
 
@@ -21,7 +22,7 @@ export function CampaignLink({ id, to, ...props }: LinkProps & { id: string }) {
             campaignReturn: {
               path: location.pathname + location.search + location.hash,
               focus: id,
-              top: window.scrollY,
+              top: pageScrollElement().scrollTop,
               width: window.innerWidth,
               lists: Array.from(
                 document.querySelectorAll<HTMLElement>('[data-restore-scroll]'),

@@ -264,7 +264,12 @@ test('only the game list scrolls while desktop preferences controls stay in plac
     await expect(results).toBeHidden();
     await expect(firstMatchHandle).toBeInViewport({ ratio: 0.99 });
     await page.screenshot({ path: `../artifacts/preferences-search-${viewport.width}.png` });
-    await page.getByRole('button', { name: 'Add Game', exact: true }).click();
+    await search.focus();
+    await expect(page.locator('#priorities fieldset[aria-busy]')).toHaveAttribute(
+      'aria-busy',
+      'false',
+    );
+    await search.press('Enter');
     await expect(page.getByRole('alert')).toContainText('Choose a game from the results.');
     await match.scrollIntoViewIfNeeded();
     await expect(match).toBeInViewport({ ratio: 0.99 });
@@ -449,17 +454,22 @@ test('simplified captions and settings retain progress, recovery and refresh con
       await expect(
         page.getByRole('button', { name: /^(Refresh inventory|Refreshing\.\.\.)$/ }),
       ).toHaveCount(0);
-      const tabs = (await page
-        .getByRole('navigation', { name: 'Settings sections' })
-        .boundingBox())!;
+      const tabs = page.getByRole('navigation', { name: 'Settings sections' });
+      if (width < 1024) {
+        await expect(tabs).toBeHidden();
+        await expect(page.getByRole('link', { name: 'Back to Settings' })).toBeVisible();
+      }
+      const anchor = (await (
+        width >= 1024 ? tabs : page.getByRole('heading', { level: 1 }).locator('..')
+      ).boundingBox())!;
       await expect(content.getByRole('heading')).toHaveText(
         section === 'account' ? ['Badges'] : [],
       );
       const first = (await content.locator(':scope > :first-child').boundingBox())!;
-      const offset = first.y - tabs.y - tabs.height;
+      const offset = first.y - anchor.y - anchor.height;
       contentOffset ??= offset;
       expect(offset).toBeCloseTo(contentOffset, 0);
-      expect(first.x).toBeCloseTo(tabs.x, 0);
+      expect(first.x).toBeCloseTo(anchor.x, 0);
       await page.screenshot({
         path: `../artifacts/settings-${section}-${width}.png`,
         fullPage: true,
@@ -1490,7 +1500,9 @@ test('mobile campaign details lock background scrolling and restore the list', a
         await page.goto(`/campaigns?view=${view}&sort=name${history ? '&tab=history' : ''}`);
         const target = page.getByRole('button', { name: 'Open Campaign 15', exact: true });
         await target.scrollIntoViewIfNeeded();
-        const before = await page.evaluate(() => window.scrollY);
+        const before = await page.evaluate(
+          () => window.scrollY + (document.getElementById('main')?.scrollTop ?? 0),
+        );
         const results = page.getByRole('region', {
           name: history ? 'History' : 'Campaigns',
           exact: true,
@@ -1502,7 +1514,11 @@ test('mobile campaign details lock background scrolling and restore the list', a
         const body = detail.locator('.detail-body');
         await expect(detail).toBeVisible();
         await expect(page.locator('html')).toHaveCSS('overflow-y', 'hidden');
-        expect(await page.evaluate(() => window.scrollY)).toBe(before);
+        expect(
+          await page.evaluate(
+            () => window.scrollY + (document.getElementById('main')?.scrollTop ?? 0),
+          ),
+        ).toBe(before);
         await detail.locator('header').hover();
         await page.mouse.wheel(0, 400);
         await body.focus();
@@ -1514,7 +1530,11 @@ test('mobile campaign details lock background scrolling and restore the list', a
         await body.hover();
         await page.mouse.wheel(0, 400);
         await expect(body).toHaveCSS('overscroll-behavior-y', 'contain');
-        expect(await page.evaluate(() => window.scrollY)).toBe(before);
+        expect(
+          await page.evaluate(
+            () => window.scrollY + (document.getElementById('main')?.scrollTop ?? 0),
+          ),
+        ).toBe(before);
         if (width === 390 && view === 'grid')
           await page.screenshot({
             path: `../artifacts/mobile-detail-scroll-${history ? 'history' : 'available'}.png`,
@@ -1522,9 +1542,16 @@ test('mobile campaign details lock background scrolling and restore the list', a
         if (history) await page.goBack();
         else await detail.getByRole('button', { name: 'Close details' }).click();
         await expect(detail).toHaveCount(0);
-        await expect(page.locator('html')).toHaveCSS('overflow-y', 'visible');
+        await expect(page.locator('html')).toHaveCSS(
+          'overflow-y',
+          width < 1024 ? 'hidden' : 'visible',
+        );
         await expect(target).toBeFocused();
-        expect(await page.evaluate(() => window.scrollY)).toBeCloseTo(before, 0);
+        expect(
+          await page.evaluate(
+            () => window.scrollY + (document.getElementById('main')?.scrollTop ?? 0),
+          ),
+        ).toBeCloseTo(before, 0);
         expect(await results.evaluate((element) => element.scrollTop)).toBeCloseTo(listBefore, 0);
         await target.hover();
         await page.mouse.wheel(0, -250);
@@ -1532,7 +1559,9 @@ test('mobile campaign details lock background scrolling and restore the list', a
           .poll(() =>
             view === 'list'
               ? results.evaluate((element) => element.scrollTop)
-              : page.evaluate(() => window.scrollY),
+              : page.evaluate(
+                  () => window.scrollY + (document.getElementById('main')?.scrollTop ?? 0),
+                ),
           )
           .toBeLessThan(view === 'list' ? listBefore : before);
       }
@@ -1548,7 +1577,7 @@ test('mobile campaign details lock background scrolling and restore the list', a
     .getByRole('navigation', { name: 'Main navigation' })
     .getByRole('link', { name: 'Activity', exact: true })
     .click();
-  await expect(page.locator('html')).toHaveCSS('overflow-y', 'visible');
+  await expect(page.locator('html')).toHaveCSS('overflow-y', 'hidden');
 });
 
 test('switching details closes back to the list and live updates preserve reward scroll', async ({

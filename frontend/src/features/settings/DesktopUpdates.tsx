@@ -159,7 +159,7 @@ export function DesktopUpdates() {
   const failure = error || status?.error;
   const downloadTotal = status?.total && status.total > 0 ? status.total : null;
   return (
-    <div className="space-y-3 text-[13px]" aria-label={t('gui.desktop.updates')} role="region">
+    <div className="grid gap-4 text-[13px]" aria-label={t('gui.desktop.updates')} role="region">
       <UpdateCheck
         version={status?.current_version}
         checking={status?.phase === 'checking'}

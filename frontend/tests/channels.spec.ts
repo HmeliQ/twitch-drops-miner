@@ -209,9 +209,9 @@ for (const viewport of [
       viewport.width,
     );
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    // A full-page capture scrolls the anchor out of view and dismisses the picker.
     await page.screenshot({
       path: `../artifacts/channel-search-${viewport.width}.png`,
-      fullPage: true,
     });
     const selection = page.waitForRequest('**/api/accounts/primary/channels/select');
     await input.press('ArrowDown');

@@ -389,4 +389,23 @@ test('compact desktop folder actions retain accessible names and native destinat
   }
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await page.screenshot({ path: '../artifacts/desktop-folder-actions.png' });
+  for (const width of [1440, 375]) {
+    await page.setViewportSize({ width, height: 667 });
+    const rows = page.locator('#settings-desktop label:has(input[type="checkbox"])');
+    const bounds = await rows.evaluateAll((labels) =>
+      labels.map((label) => {
+        const { y, height } = label.getBoundingClientRect();
+        return { y, height };
+      }),
+    );
+    expect(bounds).toHaveLength(5);
+    for (let i = 1; i < bounds.length; i++) {
+      expect(bounds[i]!.y - bounds[i - 1]!.y - bounds[i - 1]!.height).toBe(4);
+      expect(bounds[i]!.height).toBeGreaterThanOrEqual(width < 768 ? 44 : 36);
+    }
+    await page.screenshot({
+      path: `../artifacts/settings-spacing-desktop-${width}.png`,
+      fullPage: true,
+    });
+  }
 });
