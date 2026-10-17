@@ -174,3 +174,25 @@ test('foreground restoration refreshes both sockets without losing the account, 
   await page.getByRole('link', { name: 'Accounts', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Add account', exact: true })).toBeEnabled();
 });
+
+test('a dialog follows the visible viewport when a phone keyboard opens', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/settings#account');
+  await page.getByRole('button', { name: 'Rename Twitch 123456', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await page.evaluate(() => {
+    Object.defineProperties(window.visualViewport, {
+      height: { configurable: true, value: 300 },
+      offsetTop: { configurable: true, value: 60 },
+    });
+    window.visualViewport!.dispatchEvent(new Event('resize'));
+  });
+  await expect
+    .poll(async () => {
+      const box = (await dialog.boundingBox())!;
+      return box.y >= 76 && box.y + box.height <= 344;
+    })
+    .toBe(true);
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+});

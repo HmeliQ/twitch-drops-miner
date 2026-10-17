@@ -22,6 +22,7 @@ import {
 } from '@mdi/js';
 import { Icon } from '@mdi/react';
 import { ApiError, safeUrl } from '../lib/api';
+import { viewportBounds } from './viewport';
 import { useT } from '../lib/i18n';
 export function IconButton({
   path,
@@ -358,6 +359,27 @@ export function Dialog({
     const dialog = ref.current;
     if (open && !dialog?.open) dialog?.showModal();
     else if (!open && dialog?.open) dialog.close();
+    if (!open || !dialog) return;
+    const position = () => {
+      const { left, top, right, bottom } = viewportBounds();
+      Object.assign(dialog.style, {
+        left: `${left + 8}px`,
+        top: `${top + 8}px`,
+        right: `${innerWidth - right + 8}px`,
+        bottom: `${innerHeight - bottom + 8}px`,
+        width: `${Math.max(0, right - left - 16)}px`,
+        maxHeight: `${Math.max(0, bottom - top - 16)}px`,
+      });
+    };
+    position();
+    window.addEventListener('resize', position);
+    window.visualViewport?.addEventListener('resize', position);
+    window.visualViewport?.addEventListener('scroll', position);
+    return () => {
+      window.removeEventListener('resize', position);
+      window.visualViewport?.removeEventListener('resize', position);
+      window.visualViewport?.removeEventListener('scroll', position);
+    };
   }, [open]);
   return (
     <dialog
