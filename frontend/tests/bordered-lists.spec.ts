@@ -36,8 +36,15 @@ for (const width of [1440, 390]) {
     await page.screenshot({ path: `../artifacts/bordered-games-${width}.png` });
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   });
+}
 
-  test(`Available and History scroll inside matching borders at ${width}px`, async ({
+for (const { width, height, safeTop, safeBottom } of [
+  { width: 1440, height: 900, safeTop: 0, safeBottom: 0 },
+  { width: 390, height: 600, safeTop: 47, safeBottom: 34 },
+  { width: 320, height: 568, safeTop: 0, safeBottom: 0 },
+  { width: 844, height: 390, safeTop: 0, safeBottom: 21 },
+]) {
+  test(`Available and History scroll inside matching borders at ${width}x${height}`, async ({
     page,
     request,
   }) => {
@@ -67,9 +74,16 @@ for (const width of [1440, 390]) {
         },
       }),
     );
-    await page.setViewportSize({ width, height: 900 });
+    await page.setViewportSize({ width, height });
     for (const history of [false, true]) {
       await page.goto(`/campaigns?view=list&sort=name${history ? '&tab=history' : ''}`);
+      await page.evaluate(
+        ({ safeTop, safeBottom }) => {
+          document.documentElement.style.setProperty('--safe-top', `${safeTop}px`);
+          document.documentElement.style.setProperty('--safe-bottom', `${safeBottom}px`);
+        },
+        { safeTop, safeBottom },
+      );
       const list = page.getByRole('region', {
         name: history ? 'History' : 'Campaigns',
         exact: true,
@@ -80,7 +94,25 @@ for (const width of [1440, 390]) {
       await expect(list.locator('.campaign-list')).toHaveCSS('border-top-width', '0px');
       await expect(list).toHaveCSS('overflow-y', 'auto');
       const before = await list.boundingBox();
+      const toolbar = page.locator('.campaign-toolbar');
+      const toolbarBefore = await toolbar.boundingBox();
       const top = await page.evaluate(() => window.scrollY);
+      if (width < 1024) {
+        const main = page.locator('#main');
+        const bounds = (await main.boundingBox())!;
+        expect(
+          await main.evaluate((element) => element.scrollHeight - element.clientHeight),
+        ).toBeLessThanOrEqual(1);
+        expect(bounds.y).toBe((await page.locator('.app-sidebar').boundingBox())!.height);
+        expect(bounds.y + bounds.height).toBe(
+          (await page.locator('.primary-nav').boundingBox())!.y,
+        );
+        expect(before!.y + before!.height).toBeLessThanOrEqual(bounds.y + bounds.height);
+        await list.hover();
+        await page.mouse.wheel(0, 200);
+        await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+        expect(await main.evaluate((element) => element.scrollTop)).toBe(0);
+      }
       await list.evaluate((element) => {
         element.scrollTop = element.scrollHeight;
       });
@@ -88,6 +120,7 @@ for (const width of [1440, 390]) {
         list.getByRole('button', { name: 'Open Campaign 25', exact: true }),
       ).toBeInViewport();
       expect(await list.boundingBox()).toEqual(before);
+      expect(await toolbar.boundingBox()).toEqual(toolbarBefore);
       expect(await page.evaluate(() => window.scrollY)).toBe(top);
       await page.screenshot({
         path: `../artifacts/bordered-${history ? 'history' : 'campaigns'}-${width}.png`,

@@ -1,3 +1,4 @@
+import { pageScrollElement } from '../shared/ui/pageScroll';
 import { Link, NavLink, useAccountPath } from './accountNavigation';
 import { DesktopUpdateLink, DesktopUpdateProvider } from '../features/settings/DesktopUpdates';
 import { isDesktop } from '../shared/lib/platform';
@@ -77,7 +78,7 @@ function Shell({ auth, onLogout }: { auth: AuthStatus; onLogout: () => Promise<v
       const frame = requestAnimationFrame(() => {
         const trigger = document.getElementById('settings-link-mining');
         if (trigger?.getClientRects().length) trigger.focus({ preventScroll: true });
-        window.scrollTo(0, 0);
+        pageScrollElement().scrollTo(0, 0);
       });
       return () => cancelAnimationFrame(frame);
     }
@@ -91,7 +92,7 @@ function Shell({ auth, onLogout }: { auth: AuthStatus; onLogout: () => Promise<v
           const list = document.getElementById(id);
           if (list?.clientWidth === width) list.scrollTop = top;
         }
-        window.scrollTo(0, origin.width === window.innerWidth ? origin.top : 0);
+        pageScrollElement().scrollTo(0, origin.width === window.innerWidth ? origin.top : 0);
         const trigger = document.getElementById(origin.focus);
         trigger?.focus({ preventScroll: true });
         trigger?.scrollIntoView({ block: 'nearest' });
@@ -100,7 +101,7 @@ function Shell({ auth, onLogout }: { auth: AuthStatus; onLogout: () => Promise<v
     }
     if (previous.pathname === location.pathname) return;
     if (location.search.includes('campaign=')) return;
-    window.scrollTo(0, 0);
+    pageScrollElement().scrollTo(0, 0);
   }, [location, navigationType]);
   return (
     <div className="app-shell min-h-dvh">

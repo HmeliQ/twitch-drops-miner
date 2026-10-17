@@ -291,6 +291,39 @@ test('switching retains account views and sends a pending preference save to its
   ).toHaveValue('Rust');
 });
 
+test('mobile account switching restores the content and campaign list scroll positions', async ({
+  page,
+  request,
+}) => {
+  await seed(request, 1);
+  await request.post('/__test/event', {
+    headers,
+    data: {
+      event: 'inventory_batch_update',
+      data: {
+        campaigns: Array.from({ length: 25 }, (_, index) => ({
+          ...fixture.campaigns[0],
+          id: `scroll-${index}`,
+        })),
+      },
+    },
+  });
+  await page.setViewportSize({ width: 390, height: 600 });
+  for (const view of ['grid', 'list']) {
+    await page.goto(`/campaigns?account=primary&view=${view}`);
+    await expect(page.locator('.campaign-summary')).toHaveCount(25);
+    const scroller = page.locator(view === 'grid' ? '#main' : '.campaign-results-list');
+    await scroller.evaluate((element) => element.scrollTo(0, 400));
+    await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(400);
+    await switchTo(page, 'Account 2');
+    await expect(page).toHaveURL(new RegExp(`account=${second}`));
+    await switchTo(page, 'Twitch 123456');
+    await expect(page.locator('.campaign-summary')).toHaveCount(25);
+    await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(400);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  }
+});
+
 test('switching accounts keeps the current page and settings or campaign section', async ({
   page,
   request,

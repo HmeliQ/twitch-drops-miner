@@ -449,6 +449,7 @@ export default function Campaigns() {
         <div className="campaign-browser min-w-0">
           <div
             ref={results}
+            id="campaign-results"
             role="region"
             aria-label={t(historyTab ? 'gui.tabs.history' : 'campaigns')}
             tabIndex={0}

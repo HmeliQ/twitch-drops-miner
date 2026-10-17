@@ -1500,7 +1500,9 @@ test('mobile campaign details lock background scrolling and restore the list', a
         await page.goto(`/campaigns?view=${view}&sort=name${history ? '&tab=history' : ''}`);
         const target = page.getByRole('button', { name: 'Open Campaign 15', exact: true });
         await target.scrollIntoViewIfNeeded();
-        const before = await page.evaluate(() => window.scrollY);
+        const before = await page.evaluate(
+          () => window.scrollY + (document.getElementById('main')?.scrollTop ?? 0),
+        );
         const results = page.getByRole('region', {
           name: history ? 'History' : 'Campaigns',
           exact: true,
@@ -1512,7 +1514,11 @@ test('mobile campaign details lock background scrolling and restore the list', a
         const body = detail.locator('.detail-body');
         await expect(detail).toBeVisible();
         await expect(page.locator('html')).toHaveCSS('overflow-y', 'hidden');
-        expect(await page.evaluate(() => window.scrollY)).toBe(before);
+        expect(
+          await page.evaluate(
+            () => window.scrollY + (document.getElementById('main')?.scrollTop ?? 0),
+          ),
+        ).toBe(before);
         await detail.locator('header').hover();
         await page.mouse.wheel(0, 400);
         await body.focus();
@@ -1524,7 +1530,11 @@ test('mobile campaign details lock background scrolling and restore the list', a
         await body.hover();
         await page.mouse.wheel(0, 400);
         await expect(body).toHaveCSS('overscroll-behavior-y', 'contain');
-        expect(await page.evaluate(() => window.scrollY)).toBe(before);
+        expect(
+          await page.evaluate(
+            () => window.scrollY + (document.getElementById('main')?.scrollTop ?? 0),
+          ),
+        ).toBe(before);
         if (width === 390 && view === 'grid')
           await page.screenshot({
             path: `../artifacts/mobile-detail-scroll-${history ? 'history' : 'available'}.png`,
@@ -1532,9 +1542,16 @@ test('mobile campaign details lock background scrolling and restore the list', a
         if (history) await page.goBack();
         else await detail.getByRole('button', { name: 'Close details' }).click();
         await expect(detail).toHaveCount(0);
-        await expect(page.locator('html')).toHaveCSS('overflow-y', 'visible');
+        await expect(page.locator('html')).toHaveCSS(
+          'overflow-y',
+          width < 1024 ? 'hidden' : 'visible',
+        );
         await expect(target).toBeFocused();
-        expect(await page.evaluate(() => window.scrollY)).toBeCloseTo(before, 0);
+        expect(
+          await page.evaluate(
+            () => window.scrollY + (document.getElementById('main')?.scrollTop ?? 0),
+          ),
+        ).toBeCloseTo(before, 0);
         expect(await results.evaluate((element) => element.scrollTop)).toBeCloseTo(listBefore, 0);
         await target.hover();
         await page.mouse.wheel(0, -250);
@@ -1542,7 +1559,9 @@ test('mobile campaign details lock background scrolling and restore the list', a
           .poll(() =>
             view === 'list'
               ? results.evaluate((element) => element.scrollTop)
-              : page.evaluate(() => window.scrollY),
+              : page.evaluate(
+                  () => window.scrollY + (document.getElementById('main')?.scrollTop ?? 0),
+                ),
           )
           .toBeLessThan(view === 'list' ? listBefore : before);
       }
@@ -1558,7 +1577,7 @@ test('mobile campaign details lock background scrolling and restore the list', a
     .getByRole('navigation', { name: 'Main navigation' })
     .getByRole('link', { name: 'Activity', exact: true })
     .click();
-  await expect(page.locator('html')).toHaveCSS('overflow-y', 'visible');
+  await expect(page.locator('html')).toHaveCSS('overflow-y', 'hidden');
 });
 
 test('switching details closes back to the list and live updates preserve reward scroll', async ({

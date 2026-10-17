@@ -490,21 +490,27 @@ dialog .help-popover {
   }
 }
 @media (max-width: 1023px) {
-  html {
-    scroll-padding-top: calc(61px + var(--safe-top));
+  html:has(.app-shell),
+  body:has(.app-shell) {
+    height: 100%;
+    overflow: hidden;
     overscroll-behavior-y: none;
   }
   .app-shell:has(.campaign-detail) .brand-row {
     visibility: hidden;
   }
   .app-shell {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 0;
     padding-top: 0;
-    padding-bottom: 0;
+    padding-bottom: calc(65px + var(--safe-bottom));
   }
   .app-sidebar {
-    position: sticky;
+    position: relative;
     top: 0;
+    flex-shrink: 0;
     z-index: 20;
     height: auto;
     padding-top: var(--safe-top);
@@ -556,13 +562,39 @@ dialog .help-popover {
     height: 21px;
   }
   .workspace {
-    padding: 20px 16px calc(92px + var(--safe-bottom));
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    padding: 20px 16px 28px;
+  }
+  .app-shell:has(.campaign-detail) .workspace {
+    overflow-y: hidden;
+  }
+  .campaigns-frame:has(.campaign-results-list) {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+  .campaigns-frame > :not(.campaign-workspace) {
+    flex-shrink: 0;
+  }
+  .campaign-workspace:has(.campaign-results-list) {
+    flex: 1;
+    min-height: 0;
+    grid-template-rows: auto minmax(44px, 1fr);
+  }
+  .campaign-results-list {
+    flex: 1;
+    max-height: none;
+    min-height: 0;
   }
   .campaign-detail {
     inset: var(--safe-top) var(--safe-right) calc(65px + var(--safe-bottom)) var(--safe-left);
   }
   .activity-frame {
-    height: calc(100dvh - 173px - var(--safe-top) - var(--safe-bottom));
+    height: 100%;
   }
   .settings-tab {
     min-height: 44px;

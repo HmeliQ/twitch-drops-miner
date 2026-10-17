@@ -1,3 +1,4 @@
+import { pageScrollElement } from '../shared/ui/pageScroll';
 import {
   createContext,
   useCallback,
@@ -306,10 +307,10 @@ export function AccountsProvider({ children }: { children: ReactNode }) {
       if (selection.current)
         routes.current.set(selection.current, {
           ...latestLocation.current,
-          top: window.scrollY,
+          top: pageScrollElement().scrollTop,
           width: window.innerWidth,
           lists: Array.from(document.querySelectorAll<HTMLElement>('[id]'))
-            .filter((element) => element.scrollTop > 0)
+            .filter((element) => element !== pageScrollElement() && element.scrollTop > 0)
             .map((element) => [element.id, element.scrollTop, element.clientWidth]),
         });
       const remembered = routes.current.get(id);
@@ -368,14 +369,14 @@ export function AccountsProvider({ children }: { children: ReactNode }) {
       view.search !== latestLocation.current.search ||
       view.hash !== latestLocation.current.hash
     ) {
-      window.scrollTo(0, 0);
+      pageScrollElement().scrollTo(0, 0);
       return;
     }
     for (const [id, top, width] of view.lists) {
       const element = document.getElementById(id);
       if (element?.clientWidth === width) element.scrollTop = top;
     }
-    window.scrollTo(0, view.width === window.innerWidth ? view.top : 0);
+    pageScrollElement().scrollTo(0, view.width === window.innerWidth ? view.top : 0);
   }, []);
   const action = useCallback(
     async <T,>(action: object): Promise<T> => {

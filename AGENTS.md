@@ -519,12 +519,17 @@ embed it and run without a build tool/runtime companion. Production builds never
   optional and off by default, including over HTTPS. Desktop continues to use native IPC.
   On browser foreground/BFCache restoration, refresh both account overview and selected-account
   sockets, retaining navigation and drafts and fencing stale replies. Respect all four safe-area
-  insets, including dialogs, popovers and the bottom navigation. The compact header sticks
-  to the top viewport edge and paints its top safe-area inset with the same opaque background;
+  insets, including dialogs, popovers and the bottom navigation. The compact header stays
+  at the top viewport edge and paints its top safe-area inset with the same opaque background;
   theme-color hints match it. Keep its controls below the inset, campaign details above the
-  header, bottom navigation reachable, and focused page content clear of the sticky header.
-  Disable vertical root overscroll in compact layouts so pulling at a page edge cannot reveal
-  a gap above the header. Keep ordinary page/list scrolling and horizontal gestures unchanged.
+  header, bottom navigation reachable, and focused page content clear of both. Below 1024px,
+  the shell fills the dynamic viewport and only its main content scrolls between the header
+  and bottom navigation; never draw a root scrollbar over those controls. Lock root overscroll
+  while the shell is mounted, leaving the login page and desktop document scrolling intact.
+  Use the shared page scroll element for route resets, account switching and detail restoration.
+  Available and History list views fit their bordered results to the remaining height, keeping
+  controls outside the list. Very short viewports may scroll the content to keep controls reachable.
+  Detail overlays lock that content scroller; their own body and bottom navigation stay usable.
 - HTTPS is optional and supplied by a host reverse proxy. `nginx.conf.example` forwards both
   Socket.IO transports to the loopback server. PUBLIC_BASE_URL must match the browser's root
   origin. The outgoing proxy setting is separate. Wiki instructions cover certificate bootstrap

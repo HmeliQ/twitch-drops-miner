@@ -1,3 +1,4 @@
+import { pageScrollElement } from '../../shared/ui/pageScroll';
 import { Link } from '../../app/accountNavigation';
 import Telegram from './Telegram';
 import { DesktopUpdates } from './DesktopUpdates';
@@ -270,7 +271,7 @@ function SettingsContent({ auth }: { auth: AuthStatus }) {
         : compact && !section
           ? previousSection.current
           : null;
-    window.scrollTo(0, 0);
+    pageScrollElement().scrollTo(0, 0);
     if (returning) {
       navigation.current
         ?.querySelector<HTMLAnchorElement>(`[data-section="${returning}"]`)

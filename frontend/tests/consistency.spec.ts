@@ -213,7 +213,11 @@ test('Settings tabs keep their position, drafts and browser history', async ({ p
     await page.setViewportSize({ width, height: 700 });
     await page.goto('/settings#account');
     const tabs = page.getByRole('navigation', { name: 'Settings sections' });
-    await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.scrollY + (document.getElementById('main')?.scrollTop ?? 0)),
+      )
+      .toBe(0);
     const top = (await tabs.boundingBox())!.y;
     await tabs.getByRole('link', { name: 'Dashboard access' }).click();
     await page
@@ -223,7 +227,11 @@ test('Settings tabs keep their position, drafts and browser history', async ({ p
       await tabs.getByRole('link', { name, exact: true }).click();
       expect((await tabs.boundingBox())!.y).toBeCloseTo(top, 0);
       await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeInViewport();
-      expect(await page.evaluate(() => scrollY)).toBe(0);
+      expect(
+        await page.evaluate(
+          () => window.scrollY + (document.getElementById('main')?.scrollTop ?? 0),
+        ),
+      ).toBe(0);
     }
     await expect(
       page.getByLabel('New password (at least 8 characters)', { exact: true }),
@@ -257,7 +265,9 @@ test('Mining and Activity details return to the originating link and scroll posi
       await page.goto(path);
       const link = page.locator(`#${id}`);
       await link.evaluate((element) => element.scrollIntoView({ block: 'center' }));
-      const top = await page.evaluate(() => scrollY);
+      const top = await page.evaluate(
+        () => window.scrollY + (document.getElementById('main')?.scrollTop ?? 0),
+      );
       const lists = await page
         .locator('[data-restore-scroll]')
         .evaluateAll((elements) => elements.map((el) => el.scrollTop));
@@ -268,7 +278,11 @@ test('Mining and Activity details return to the originating link and scroll posi
       await page.getByRole('button', { name: 'Close details' }).click();
       await expect(page).toHaveURL(new RegExp(path === '/' ? '/$' : '/activity$'));
       await expect(link).toBeFocused();
-      await expect.poll(() => page.evaluate(() => scrollY)).toBeCloseTo(top, 0);
+      await expect
+        .poll(() =>
+          page.evaluate(() => window.scrollY + (document.getElementById('main')?.scrollTop ?? 0)),
+        )
+        .toBeCloseTo(top, 0);
       expect(
         await page
           .locator('[data-restore-scroll]')

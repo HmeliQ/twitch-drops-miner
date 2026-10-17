@@ -31,6 +31,8 @@ test('the mobile header fills the top safe area and stays reachable while scroll
     }, safeTop);
     const header = page.locator('.app-sidebar');
     const brand = page.locator('.brand-row');
+    const content = page.locator('#main');
+    const navigation = page.locator('.primary-nav');
     await expect(brand).toBeVisible();
     await expect(
       page.getByRole('button', { name: 'Campaign details', exact: true }).first(),
@@ -45,8 +47,19 @@ test('the mobile header fills the top safe area and stays reachable while scroll
     await page.mouse.move(195, 200);
     await page.mouse.wheel(0, -300);
     expect((await header.boundingBox())!.y).toBe(0);
-    await page.evaluate(() => window.scrollTo(0, 200));
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
+    await content.evaluate((element) => element.scrollTo(0, 200));
+    await expect.poll(() => content.evaluate((element) => element.scrollTop)).toBeGreaterThan(100);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(600);
+    await expect(content).toHaveCSS('overflow-y', 'auto');
+    const contentBox = (await content.boundingBox())!;
+    expect(contentBox.y).toBe((await header.boundingBox())!.height);
+    expect(contentBox.y + contentBox.height).toBe((await navigation.boundingBox())!.y);
+    await content.evaluate((element) => element.scrollTo(0, element.scrollHeight));
+    const lastCampaign = page.getByRole('button', { name: 'Campaign details', exact: true }).last();
+    const lastBox = (await lastCampaign.boundingBox())!;
+    expect(lastBox.y + lastBox.height).toBeLessThanOrEqual((await navigation.boundingBox())!.y);
+    await expect(lastCampaign).toBeInViewport();
     expect((await header.boundingBox())!.y).toBe(0);
     expect((await brand.boundingBox())!.height).toBe(height);
     expect(await header.evaluate((node) => node.contains(document.elementFromPoint(195, 4)))).toBe(
@@ -78,6 +91,7 @@ test('app metadata is available with optional login and on the locked dashboard'
   page,
   request,
 }) => {
+  await page.setViewportSize({ width: 390, height: 300 });
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Mining', exact: true })).toBeVisible();
   await request.post('/api/auth/settings', {
@@ -90,6 +104,10 @@ test('app metadata is available with optional login and on the locked dashboard'
   });
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Unlock dashboard', exact: true })).toBeVisible();
+  await expect(page.locator('html')).toHaveCSS('overflow-y', 'visible');
+  await expect(page.locator('body')).toHaveCSS('overflow-y', 'visible');
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute(
     'href',
     '/manifest.webmanifest',

@@ -44,7 +44,9 @@ test('Settings uses consistent section spacing and keeps access help behind its 
           .boundingBox())!;
         if (viewport.width < 1024)
           expect(saveBox.y + saveBox.height).toBeLessThanOrEqual(navigation.y);
-        await page.evaluate(() => scrollTo(0, 0));
+        await page.evaluate(() =>
+          (innerWidth < 1024 ? document.getElementById('main')! : window).scrollTo(0, 0),
+        );
       }
       if (section === 'access') {
         const help = content.getByRole('button', { name: 'Dashboard access help', exact: true });
@@ -158,7 +160,9 @@ for (const width of [390, 320]) {
     const connectionHeading = page.getByRole('heading', { name: 'Connection', exact: true });
     await expect(connectionHeading).toBeVisible();
     await expect(menu).toBeHidden();
-    expect(await page.evaluate(() => scrollY)).toBe(0);
+    expect(
+      await page.evaluate(() => window.scrollY + (document.getElementById('main')?.scrollTop ?? 0)),
+    ).toBe(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await page.screenshot({ path: `../artifacts/settings-section-${width}.png`, fullPage: true });

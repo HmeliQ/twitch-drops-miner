@@ -1,3 +1,4 @@
+import { pageScrollElement } from '../../shared/ui/pageScroll';
 import { Link } from '../../app/accountNavigation';
 import { useLocation } from 'react-router';
 import { Icon } from '@mdi/react';
@@ -33,7 +34,7 @@ export default function MiningPreferences() {
   const heading = useRef<HTMLHeadingElement>(null);
   const gameList = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    window.scrollTo(0, 0);
+    pageScrollElement().scrollTo(0, 0);
     heading.current?.focus({ preventScroll: true });
   }, []);
   const [ignoredText, setIgnoredText] = useAccountState(
