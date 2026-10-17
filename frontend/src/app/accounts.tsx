@@ -15,6 +15,7 @@ import { hasUnsavedDrafts } from './useAutosave';
 import { io } from 'socket.io-client';
 import { ApiError, request } from '../shared/lib/api';
 import { isDesktop } from '../shared/lib/platform';
+import { onBrowserResume } from './browserResume';
 import type { Snapshot, OAuth, AuthStatus } from '../shared/lib/types';
 
 export interface AccountSummary {
@@ -259,7 +260,7 @@ export function AccountsProvider({ children }: { children: ReactNode }) {
     });
     socket.on('disconnect', (reason) => {
       setConnected(false);
-      checkAuth(reason === 'io server disconnect');
+      if (reason !== 'io client disconnect') checkAuth(reason === 'io server disconnect');
     });
     socket.on('connect_error', () => {
       setConnected(false);
@@ -277,6 +278,11 @@ export function AccountsProvider({ children }: { children: ReactNode }) {
     const online = () => socket.connect();
     window.addEventListener('offline', offline);
     window.addEventListener('online', online);
+    const stopResume = onBrowserResume(() => {
+      if (disposed || !navigator.onLine) return;
+      setConnected(false);
+      socket.disconnect().connect();
+    });
     socket.connect();
     void refresh().catch(() => {
       if (!disposed) setError('request_failed');
@@ -285,6 +291,7 @@ export function AccountsProvider({ children }: { children: ReactNode }) {
       disposed = true;
       controller.abort();
       clearTimeout(reconnectTimer);
+      stopResume();
       window.removeEventListener('offline', offline);
       window.removeEventListener('online', online);
       socket.removeAllListeners();

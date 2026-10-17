@@ -367,7 +367,7 @@ export function Dialog({
         event.preventDefault();
         onClose();
       }}
-      className="m-auto w-[calc(100%_-_32px)] max-w-md rounded-md border border-divider bg-raised p-6 text-text shadow-xl backdrop:bg-black/65"
+      className="app-dialog m-auto max-w-md rounded-md border border-divider bg-raised p-6 text-text shadow-xl backdrop:bg-black/65"
     >
       <div className="mb-4 flex items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-1">

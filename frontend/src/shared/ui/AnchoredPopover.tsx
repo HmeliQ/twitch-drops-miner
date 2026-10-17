@@ -1,5 +1,6 @@
 import { Icon } from '@mdi/react';
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { viewportBounds } from './viewport';
 
 export default function AnchoredPopover({
   label,
@@ -33,11 +34,7 @@ export default function AnchoredPopover({
 
   function position() {
     const anchor = trigger.current!.getBoundingClientRect();
-    const viewport = window.visualViewport;
-    const left = (viewport?.offsetLeft ?? 0) + 8;
-    const top = (viewport?.offsetTop ?? 0) + 8;
-    const right = left + (viewport?.width ?? innerWidth) - 16;
-    const bottom = top + (viewport?.height ?? innerHeight) - 16;
+    const { left, top, right, bottom } = viewportBounds();
     if (anchor.bottom <= top || anchor.top >= bottom) {
       onClose();
       return;

@@ -138,6 +138,12 @@ jobs:
         run: |
           npx playwright install --with-deps --only-shell chromium
           npm run test:browser -- --fully-parallel --shard=${{ matrix.shard }}/2
+      - name: Check the HTTPS reverse proxy example
+        if: matrix.shard == 1
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nginx openssl
+          node .github/scripts/nginx-smoke.mjs ./dashboard-fixture
       - name: Upload browser failure traces
         if: failure()
         uses: actions/upload-artifact@v4

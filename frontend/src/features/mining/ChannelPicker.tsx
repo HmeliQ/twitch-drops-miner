@@ -6,6 +6,7 @@ import type { ChannelSearchResult } from '../../shared/lib/types';
 import { IconButton, Input, Notice, useAction } from '../../shared/ui';
 import SearchPicker from '../../shared/ui/SearchPicker';
 import { useDirectorySearch } from './useDirectorySearch';
+import { viewportBounds } from '../../shared/ui/viewport';
 
 export default function ChannelPicker({
   open,
@@ -43,11 +44,7 @@ export default function ChannelPicker({
 
   function position() {
     const anchor = trigger.current!.getBoundingClientRect();
-    const viewport = window.visualViewport;
-    const left = (viewport?.offsetLeft ?? 0) + 8;
-    const top = (viewport?.offsetTop ?? 0) + 8;
-    const right = left + (viewport?.width ?? innerWidth) - 16;
-    const bottom = top + (viewport?.height ?? innerHeight) - 16;
+    const { left, top, right, bottom } = viewportBounds();
     if (anchor.bottom <= top || anchor.top >= bottom) return close();
     const width = Math.min(360, right - left);
     const below = Math.max(0, bottom - anchor.bottom - 4);

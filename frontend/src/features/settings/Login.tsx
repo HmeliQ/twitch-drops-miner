@@ -25,7 +25,7 @@ export default function Login({
   const [remember, setRemember] = useState(false);
   const action = useAction();
   return (
-    <main className="grid min-h-dvh place-items-center p-6">
+    <main className="login-page grid min-h-dvh place-items-center">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex items-center gap-3">
           <img

@@ -23,8 +23,10 @@ the alternate agent instruction files; do not recreate copies or links.
   harness when behavior/architecture changes. Update README only when setup, essential usage,
   updates or troubleshooting change; a new feature alone does not require more README text.
   Update English messages for UI or console changes. There are no other locales or language settings.
-- Keep user guidance in README and contributor policy in CONTRIBUTING. Do not create
-  `docs/`, `plans/` or repository planning documents.
+- Keep README as a short entry point and user guides in the GitHub wiki. Contributor policy
+  stays in CONTRIBUTING. Review wiki revisions with the related PR and verify published links
+  before removing README instructions. Keep wiki editing restricted to collaborators.
+  Do not create `docs/`, `plans/` or repository planning documents.
 - GitHub release publication uses the repository owner's scoped `prod` `RELEASE_TOKEN`;
   verify its identity before publishing images. Registry publication retains the workflow's
   built-in token. Keep tokens out of source, logs and chat; never reuse a local CLI credential
@@ -509,6 +511,20 @@ embed it and run without a build tool/runtime companion. Production builds never
 
 ## Dashboard design and contracts
 
+- The browser dashboard is an online PWA. Its root-scoped manifest and four exact PNG icon
+  routes are public for GET/HEAD with revalidation; API and Socket.IO authorization stays intact.
+  Generate icons from the existing SVG using `.github/scripts/app-icons.mjs`. Keep a separate
+  maskable icon. Do not add a service worker, offline cache, queued writes, install prompts,
+  buttons or installation guidance inside the app. Dashboard password protection remains
+  optional and off by default, including over HTTPS. Desktop continues to use native IPC.
+  On browser foreground/BFCache restoration, refresh both account overview and selected-account
+  sockets, retaining navigation and drafts and fencing stale replies. Respect all four safe-area
+  insets, including dialogs, popovers and the bottom navigation.
+- HTTPS is optional and supplied by a host reverse proxy. `nginx.conf.example` forwards both
+  Socket.IO transports to the loopback server. PUBLIC_BASE_URL must match the browser's root
+  origin. The outgoing proxy setting is separate. Wiki instructions cover certificate bootstrap
+  and renewal; never change a running deployment as part of code validation.
+
 - All displayed times, including tooltips, use the 24-hour `h23` clock (midnight is `00:00`),
   preserving the browser's timezone and locale date format. Use the shared date/time formatter;
   Activity's time-only display retains seconds. Confirmed progress times show HH:mm today,
@@ -888,12 +904,12 @@ GHCR's latest digest may advance Docker Hub's latest; older releases and prerele
 Failed mirrors leave GHCR intact and can be retried through the manual mirror action.
 Advance latest only after the stable release and its manifest are public. Preserve
 published old-name images and document promotion recovery and first-package visibility.
-Keep Buildx action pins identical between validation and publishing. README uses
-a centered title/tagline/license opener and GitHub Flavored Markdown alerts. Keep README
-concise: no exhaustive control/status lists, layout descriptions, internal implementation
-details or repeated explanations of visible UI labels. Remove stale or redundant text instead
-of appending a paragraph for every change. Put release changes in CHANGELOG and technical
-contracts in this harness; preserve essential setup, recovery and privacy guidance.
+Keep Buildx action pins identical between validation and publishing. README keeps its
+centered title/tagline/license opener, screenshot, download/wiki links and project scope.
+Write README and wiki guides in plain, concise language. Omit exhaustive control/status
+lists, filler and repeated explanations of UI labels. Keep setup, recovery and privacy
+guidance in the wiki, without an Updating and rollback page. Put release changes in
+CHANGELOG and technical contracts in this harness.
 Keep upstream attribution in License and credits; do not add a contributor/PR table or automation that
 rewrites README after merges. No ordinary code merge may publish a release or bypass
 independent review/checks.

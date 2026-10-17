@@ -1,5 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Art, IconButton, Search } from './index';
+import { viewportBounds } from './viewport';
 
 type SearchOption = { id: string; name: string; image?: string | null; description?: string };
 
@@ -53,9 +54,7 @@ export default function SearchPicker<T extends SearchOption>({
 
   function position() {
     const rect = input.current!.getBoundingClientRect();
-    const viewport = window.visualViewport;
-    const top = (viewport?.offsetTop ?? 0) + 8;
-    const bottom = (viewport?.offsetTop ?? 0) + (viewport?.height ?? innerHeight) - 8;
+    const { left, top, right, bottom } = viewportBounds();
     if (rect.bottom <= top || rect.top >= bottom) {
       setOpen(false);
       setActive(null);
@@ -65,8 +64,8 @@ export default function SearchPicker<T extends SearchOption>({
     const above = Math.max(0, rect.top - top - 4);
     const upward = below < 160 && above > below;
     Object.assign(popup.current!.style, {
-      left: `${rect.left}px`,
-      width: `${rect.width}px`,
+      left: `${Math.max(left, Math.min(rect.left, right - Math.min(rect.width, right - left)))}px`,
+      width: `${Math.min(rect.width, right - left)}px`,
       maxHeight: `${Math.min(320, upward ? above : below)}px`,
       top: `${upward ? rect.top - 4 : rect.bottom + 4}px`,
       transform: upward ? 'translateY(-100%)' : '',
