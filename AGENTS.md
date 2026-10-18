@@ -22,7 +22,8 @@ the alternate agent instruction files; do not recreate copies or links.
 - Add backend unit/regression tests; cover frontend changes where practical. Update this
   harness when behavior/architecture changes. Update README only when setup, essential usage,
   updates or troubleshooting change; a new feature alone does not require more README text.
-  Update English messages for UI or console changes. There are no other locales or language settings.
+  Update `lang/English.json` for UI or console changes. The app is English only for now;
+  do not add translations, additional locales or language settings.
 - Keep README as a short entry point and user guides in the GitHub wiki. Contributor policy
   stays in CONTRIBUTING. Review wiki revisions with the related PR and verify published links
   before removing README instructions. Keep wiki editing restricted to collaborators.
