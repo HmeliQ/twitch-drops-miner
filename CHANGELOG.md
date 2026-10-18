@@ -1,5 +1,15 @@
 # Changelog
 
+## [v2.4.0](https://github.com/ohne-b/twitch-drops-miner/releases/tag/v2.4.0) — 2026-10-18
+
+- mine with multiple Twitch accounts at once, each with separate mining preferences, progress and history ([#125](https://github.com/ohne-b/twitch-drops-miner/pull/125))
+- switch accounts, pause or resume several accounts, and copy mining preferences between them ([#125](https://github.com/ohne-b/twitch-drops-miner/pull/125))
+- control accounts through one Telegram bot and choose which accounts send claim notifications ([#125](https://github.com/ohne-b/twitch-drops-miner/pull/125))
+- show fractional confirmed-progress percentages and choose minutes or hours/minutes for progress displays ([#129](https://github.com/ohne-b/twitch-drops-miner/pull/129), [#130](https://github.com/ohne-b/twitch-drops-miner/pull/130))
+- make the web dashboard installable as a PWA, with safe-area support and reconnection when returning to the app ([#133](https://github.com/ohne-b/twitch-drops-miner/pull/133))
+- add an optional Nginx HTTPS setup and move installation guides to the GitHub wiki ([#133](https://github.com/ohne-b/twitch-drops-miner/pull/133))
+- improve mobile account artwork, Settings navigation, scrolling and game-list dragging ([#126](https://github.com/ohne-b/twitch-drops-miner/pull/126), [#134](https://github.com/ohne-b/twitch-drops-miner/pull/134))
+
 ## [v2.4.0-rc.3](https://github.com/ohne-b/twitch-drops-miner/releases/tag/v2.4.0-rc.3) — 2026-10-17
 
 - make the web dashboard installable as a PWA, with app icons, safe-area support and reconnection when returning to the app ([#133](https://github.com/ohne-b/twitch-drops-miner/pull/133))
