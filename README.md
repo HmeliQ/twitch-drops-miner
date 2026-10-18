@@ -23,12 +23,16 @@ Telegram, HTTPS and troubleshooting.
 > [!NOTE]
 > This is a personal project for use on your own hardware and home network. VPS/cloud
 > hosting and services for other users aren't supported. Twitch changes can break compatibility.
+> Not affiliated with Twitch in any way.
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development, testing and review requirements.
 Report bugs through [GitHub issues](https://github.com/ohne-b/twitch-drops-miner/issues)
 with your version, installation method and redacted logs. Never share credentials or device codes.
+
+> [!NOTE]
+> English only for now, no translations needed.
 
 ## License and credits
 
